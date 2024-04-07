@@ -1,0 +1,27 @@
+use hala_gfx::{
+  HalaBuffer,
+  HalaSampler,
+  HalaImage,
+  HalaAccelerationStructure,
+};
+
+use crate::scene::gpu::HalaMesh;
+
+/// The scene in the GPU.
+pub struct HalaScene {
+  pub cameras: HalaBuffer,
+  pub lights: HalaBuffer,
+  pub light_aabbs: HalaBuffer,
+  pub materials: HalaBuffer,
+  pub textures: Vec<u32>, // indices to the images.
+  pub samplers: Vec<HalaSampler>,
+  pub images: Vec<HalaImage>,
+  pub meshes: Vec<HalaMesh>,
+
+  pub instances: Option<HalaBuffer>,
+  pub tplas: Option<HalaAccelerationStructure>,
+  pub primitives: Option<HalaBuffer>,
+  pub light_btlas: Option<HalaAccelerationStructure>,
+
+  pub light_data: Vec<crate::scene::gpu::HalaLight>,
+}
