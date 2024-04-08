@@ -30,6 +30,7 @@ pub struct HalaGlobalUniform {
   pub env_map_height: u32,
   pub env_total_sum: f32,
   pub env_rotation: f32,
+  pub env_intensity: f32,
   pub enable_tonemap: u32,
   pub enable_aces: u32,
   pub use_simple_aces: u32,
@@ -82,6 +83,7 @@ pub struct HalaRenderer {
   pub(crate) env_rotation: f32,
   pub(crate) env_ground_color: glam::Vec4,
   pub(crate) env_sky_color: glam::Vec4,
+  pub(crate) env_intensity: f32,
 
   pub(crate) textures_descriptor_set: Option<hala_gfx::HalaDescriptorSet>,
 
@@ -409,6 +411,8 @@ impl HalaRenderer {
       env_rotation: 0.0,
       env_ground_color: glam::Vec4::new(1.0, 1.0, 1.0, 1.0),
       env_sky_color: glam::Vec4::new(0.5, 0.7, 1.0, 1.0),
+      env_intensity: 1.0,
+
       textures_descriptor_set: None,
 
       host_accessible_buffer: std::mem::ManuallyDrop::new(host_accessible_buffer),
@@ -812,6 +816,12 @@ impl HalaRenderer {
     self.env_sky_color = color;
   }
 
+  /// Set the intensity of the environment.
+  /// param intensity: The intensity.
+  pub fn set_env_intensity(&mut self, intensity: f32) {
+    self.env_intensity = intensity;
+  }
+
   /// Commit all GPU resources.
   pub fn commit(&mut self) -> Result<(), HalaRendererError> {
     // Create texture descriptor set.
@@ -1067,6 +1077,7 @@ impl HalaRenderer {
       env_map_height,
       env_total_sum,
       env_rotation: self.env_rotation / 360f32,
+      env_intensity: self.env_intensity,
       enable_tonemap: self.enable_tonemap as u32,
       enable_aces: self.enable_aces as u32,
       use_simple_aces: self.use_simple_aces as u32,
