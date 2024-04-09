@@ -245,17 +245,41 @@ impl HalaGltfLoader {
       let normals = reader.read_normals()
         .ok_or(HalaRendererError::new(&format!("Read normals from mesh \"{}\" failed.", mesh_name), None))?
         .map(Vec3::from).collect::<Vec<_>>();
-      let tangents = reader.read_tangents()
-        .ok_or(HalaRendererError::new(&format!("Read tangents from mesh \"{}\" failed.", mesh_name), None))?
-        .map(|tangent| {
+      let tex_coords = reader.read_tex_coords(0)
+        .ok_or(HalaRendererError::new(&format!("Read tex_coords from mesh \"{}\" failed.", mesh_name), None))?
+        .into_f32().map(Vec2::from).collect::<Vec<_>>();
+
+      let tangents = if let Some(tangents) = reader.read_tangents() {
+        tangents.map(|tangent| {
           let t: [f32; 3] = [tangent[0] / tangent[3], tangent[1] / tangent[3], tangent[2] / tangent[3]];
           Vec3::from(t)
-        }).collect::<Vec<_>>();
-
-      let tex_coords = if let Some(tex_coords) = reader.read_tex_coords(0) {
-          tex_coords.into_f32().map(Vec2::from).collect()
+        }).collect::<Vec<_>>()
       } else {
-          vec![Vec2::new(0.0, 0.0); positions.len()]
+        // Fill the tangents with zero.
+        let mut tangents = vec![Vec3::ZERO; positions.len()];
+        // Calculate tangent.
+        for tri_indices in indices.chunks(3) {
+          let v0 = positions[tri_indices[0] as usize];
+          let v1 = positions[tri_indices[1] as usize];
+          let v2 = positions[tri_indices[2] as usize];
+          let uv0 = tex_coords[tri_indices[0] as usize];
+          let uv1 = tex_coords[tri_indices[1] as usize];
+          let uv2 = tex_coords[tri_indices[2] as usize];
+
+          let delta_pos1 = v1 - v0;
+          let delta_pos2 = v2 - v0;
+
+          let delta_uv1 = uv1 - uv0;
+          let delta_uv2 = uv2 - uv0;
+
+          let invdet = 1.0 / (delta_uv1.x * delta_uv2.y - delta_uv1.y * delta_uv2.x);
+
+          let tangent = ((delta_pos1 * delta_uv2.y - delta_pos2 * delta_uv1.y) * invdet).normalize();
+          tangents[tri_indices[0] as usize] = tangent;
+          tangents[tri_indices[1] as usize] = tangent;
+          tangents[tri_indices[2] as usize] = tangent;
+        }
+        tangents
       };
 
       let mut vertices = Vec::new();
