@@ -81,6 +81,8 @@ struct _MaterialCustomInfo {
   #[serde(default)]
   pub clearcoat_roughness: f32,
   #[serde(default)]
+  pub clearcoat_tint: [f32; 3],
+  #[serde(default)]
   pub medium_type: u8,
   #[serde(default)]
   pub medium_color: [f32; 3],
@@ -102,6 +104,7 @@ impl Default for _MaterialCustomInfo {
       sheen_tint: 0.0,
       clearcoat: 0.0,
       clearcoat_roughness: 0.0,
+      clearcoat_tint: [1.0, 1.0, 1.0],
       medium_type: 0,
       medium_color: [0.0, 0.0, 0.0],
       medium_density: 0.0,
@@ -360,6 +363,7 @@ impl HalaGltfLoader {
       sheen_tint: custom_info.sheen_tint,
       clearcoat: custom_info.clearcoat,
       clearcoat_roughness: custom_info.clearcoat_roughness,
+      clearcoat_tint: Vec3::from(custom_info.clearcoat_tint),
       specular_transmission,
       ior,
 

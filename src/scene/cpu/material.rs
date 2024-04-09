@@ -35,6 +35,7 @@ pub struct HalaMaterial {
   pub sheen_tint: f32,
   pub clearcoat: f32,
   pub clearcoat_roughness: f32,
+  pub clearcoat_tint: Vec3,
   pub specular_transmission: f32,
   pub ior: f32,
 

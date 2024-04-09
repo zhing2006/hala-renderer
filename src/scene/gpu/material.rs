@@ -9,7 +9,7 @@ pub struct HalaMedium {
   pub density: f32,
   pub anisotropy: f32,
   pub _type: u32,
-  pub _padding: [f32; 2],
+  _padding: [f32; 2],
 }
 
 /// The material information in the GPU.
@@ -19,27 +19,31 @@ pub struct HalaMaterial {
 
   pub base_color: Vec3,
   pub opacity: f32,
+
   pub emission: Vec3,
   pub anisotropic: f32,
+
   pub metallic: f32,
   pub roughness: f32,
   pub subsurface: f32,
   pub specular_tint: f32,
+
   pub sheen: f32,
   pub sheen_tint: f32,
   pub clearcoat: f32,
   pub clearcoat_roughness: f32,
-  pub specular_transmission: f32,
-  pub ior: f32,
 
+  pub clearcoat_tint: Vec3,
+  pub specular_transmission: f32,
+
+  pub ior: f32,
   pub ax: f32,
   pub ay: f32,
-
   pub base_color_map_index: u32,
+
   pub normal_map_index: u32,
   pub metallic_roughness_map_index: u32,
   pub emission_map_index: u32,
-
   pub _type: u32,
 }
 
@@ -67,16 +71,22 @@ impl std::convert::From<&HalaMaterialInCPU> for HalaMaterial {
     Self {
       base_color: material.base_color,
       opacity: material.opacity,
+
       emission: material.emission,
       anisotropic: material.anisotropic,
+
       metallic: material.metallic,
       roughness,
       subsurface: material.subsurface,
       specular_tint: material.specular_tint,
+
       sheen: material.sheen,
       sheen_tint: material.sheen_tint,
       clearcoat: material.clearcoat,
       clearcoat_roughness: material.clearcoat_roughness,
+
+      clearcoat_tint: material.clearcoat_tint,
+
       specular_transmission: material.specular_transmission,
       ior: material.ior,
 
