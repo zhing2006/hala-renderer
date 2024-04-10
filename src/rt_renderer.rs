@@ -52,6 +52,7 @@ pub struct HalaGlobalUniform {
   pub env_total_sum: f32,
   pub env_rotation: f32,
   pub env_intensity: f32,
+  pub exposure_value: f32,
   pub enable_tonemap: u32,
   pub enable_aces: u32,
   pub use_simple_aces: u32,
@@ -65,6 +66,7 @@ pub struct HalaRenderer {
   pub height: u32,
   pub max_depth: u32,
   pub rr_depth: u32,
+  pub exposure_value: f32,
   pub enable_tonemap: bool,
   pub enable_aces: bool,
   pub use_simple_aces: bool,
@@ -433,6 +435,8 @@ impl HalaRenderer {
       env_ground_color: glam::Vec4::new(1.0, 1.0, 1.0, 1.0),
       env_sky_color: glam::Vec4::new(0.5, 0.7, 1.0, 1.0),
       env_intensity: 1.0,
+
+      exposure_value: 1.0,
 
       textures_descriptor_set: None,
 
@@ -843,6 +847,12 @@ impl HalaRenderer {
     self.env_intensity = intensity;
   }
 
+  /// Set the exposure value.
+  /// param exposure_value: The exposure value.
+  pub fn set_exposure_value(&mut self, exposure_value: f32) {
+    self.exposure_value = exposure_value;
+  }
+
   /// Commit all GPU resources.
   pub fn commit(&mut self) -> Result<(), HalaRendererError> {
     // Create texture descriptor set.
@@ -1099,6 +1109,7 @@ impl HalaRenderer {
       env_total_sum,
       env_rotation: self.env_rotation / 360f32,
       env_intensity: self.env_intensity,
+      exposure_value: self.exposure_value,
       enable_tonemap: self.enable_tonemap as u32,
       enable_aces: self.enable_aces as u32,
       use_simple_aces: self.use_simple_aces as u32,
