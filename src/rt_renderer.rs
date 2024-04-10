@@ -15,6 +15,27 @@ use crate::scene::{
   loader,
 };
 
+/// The type of the environment.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct HalaEnvType(u8);
+impl HalaEnvType {
+  pub const SKY: Self = Self(0);
+  pub const MAP: Self = Self(1);
+
+  pub fn from_u8(value: u8) -> Self {
+    match value {
+      0 => Self::SKY,
+      1 => Self::MAP,
+      _ => panic!("Invalid light type."),
+    }
+  }
+
+  pub fn to_u8(&self) -> u8 {
+    self.0
+  }
+}
+
+
 #[repr(C, align(4))]
 #[derive(Debug, Clone, Copy)]
 pub struct HalaGlobalUniform {
@@ -25,7 +46,7 @@ pub struct HalaGlobalUniform {
   pub rr_depth: u32,
   pub frame_index: u32,
   pub camera_index: u32,
-  pub use_hdri: u32,
+  pub env_type: u32,
   pub env_map_width: u32,
   pub env_map_height: u32,
   pub env_total_sum: f32,
@@ -1072,7 +1093,7 @@ impl HalaRenderer {
       rr_depth: self.rr_depth,
       frame_index: (self.total_frames - 1) as u32,
       camera_index: 0,
-      use_hdri: use_hdri as u32,
+      env_type: if use_hdri { HalaEnvType::MAP.to_u8() as u32 } else { HalaEnvType::SKY.to_u8() as u32 },
       env_map_width,
       env_map_height,
       env_total_sum,
