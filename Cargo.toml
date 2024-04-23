@@ -5,7 +5,7 @@ edition = "2021"
 
 [dependencies]
 hala-gfx = {path = "../hala-gfx"}
-anyhow = {version = "1", default-features = false, features = ["backtrace"]}
+anyhow = {version = "1", default-features = false, features = ["backtrace", "std"]}
 thiserror = {version = "1", default-features = false}
 log = {version = "0", default-features = false}
 winit = {version = "0.29", default-features = false, features = ["rwh_06", "x11", "wayland", "wayland-dlopen"]}
