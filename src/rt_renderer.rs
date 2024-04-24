@@ -1095,7 +1095,7 @@ impl HalaRenderer {
     } else {
       0
     };
-    self.global_uniform_buffer.update_memory(&[HalaGlobalUniform {
+    self.global_uniform_buffer.update_memory(0, &[HalaGlobalUniform {
       ground_color: self.env_ground_color,
       sky_color: self.env_sky_color,
       resolution: glam::Vec2::new(self.width as f32, self.height as f32),
@@ -1225,7 +1225,7 @@ impl HalaRenderer {
             &self.host_accessible_buffer);
         },
         0)?;
-      self.host_accessible_buffer.download_memory(pixels.as_mut_slice())?;
+      self.host_accessible_buffer.download_memory(0, pixels.as_mut_slice())?;
 
       if is_color {
         let luminance = |c: glam::Vec3| -> f32 {
