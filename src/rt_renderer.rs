@@ -72,7 +72,7 @@ pub struct HalaRenderer {
   pub use_simple_aces: bool,
   pub max_frames: u64,
 
-  pub context: std::mem::ManuallyDrop<HalaContext>,
+  pub context: std::mem::ManuallyDrop<Rc<RefCell<HalaContext>>>,
   pub is_ray_tracing: bool,
 
   pub(crate) graphics_command_buffers: std::mem::ManuallyDrop<hala_gfx::HalaCommandBufferSet>,
@@ -405,7 +405,7 @@ impl HalaRenderer {
       use_simple_aces,
       max_frames: if max_frames == 0 { std::u64::MAX } else { max_frames },
 
-      context: std::mem::ManuallyDrop::new(context),
+      context: std::mem::ManuallyDrop::new(Rc::new(RefCell::new(context))),
       is_ray_tracing,
       graphics_command_buffers: std::mem::ManuallyDrop::new(graphics_command_buffers),
       transfer_command_buffers: std::mem::ManuallyDrop::new(transfer_command_buffers),
@@ -570,8 +570,9 @@ impl HalaRenderer {
     rt_group_type: hala_gfx::HalaRayTracingShaderGroupType,
     debug_name: &str) -> Result<(), HalaRendererError>
   {
+    let context = self.context.borrow();
     let shader = hala_gfx::HalaShader::new(
-      Rc::clone(&self.context.logical_device),
+      Rc::clone(&context.logical_device),
       code,
       stage,
       rt_group_type,
@@ -608,8 +609,9 @@ impl HalaRenderer {
     rt_group_type: hala_gfx::HalaRayTracingShaderGroupType,
     debug_name: &str) -> Result<(), HalaRendererError>
   {
+    let context = self.context.borrow();
     let shader = hala_gfx::HalaShader::with_file(
-      Rc::clone(&self.context.logical_device),
+      Rc::clone(&context.logical_device),
       file_path,
       stage,
       rt_group_type,
@@ -646,9 +648,10 @@ impl HalaRenderer {
     intersection_code: Option<&[u8]>,
     debug_name: &str) -> Result<(), HalaRendererError>
   {
+    let context = self.context.borrow();
     let closest_shader = match closest_code {
       Some(code) => Some(hala_gfx::HalaShader::new(
-        Rc::clone(&self.context.logical_device),
+        Rc::clone(&context.logical_device),
         code,
         hala_gfx::HalaShaderStageFlags::CLOSEST_HIT,
         match intersection_code {
@@ -661,7 +664,7 @@ impl HalaRenderer {
     };
     let any_shader = match any_code {
       Some(code) => Some(hala_gfx::HalaShader::new(
-        Rc::clone(&self.context.logical_device),
+        Rc::clone(&context.logical_device),
         code,
         hala_gfx::HalaShaderStageFlags::ANY_HIT,
         match intersection_code {
@@ -674,7 +677,7 @@ impl HalaRenderer {
     };
     let intersection_shader = match intersection_code {
       Some(code) => Some(hala_gfx::HalaShader::new(
-        Rc::clone(&self.context.logical_device),
+        Rc::clone(&context.logical_device),
         code,
         hala_gfx::HalaShaderStageFlags::INTERSECTION,
         hala_gfx::HalaRayTracingShaderGroupType::PROCEDURAL_HIT_GROUP,
@@ -701,6 +704,7 @@ impl HalaRenderer {
     intersection_file_path: Option<&str>,
     debug_name: &str) -> Result<(), HalaRendererError>
   {
+    let context = self.context.borrow();
     // closest_file_path, any_file_path and intersection_file_path can not be all none.
     if closest_file_path.is_none() && any_file_path.is_none() && intersection_file_path.is_none() {
       return Err(HalaRendererError::new("All hit shaders are none!", None));
@@ -708,7 +712,7 @@ impl HalaRenderer {
 
     let closest_shader = match closest_file_path {
       Some(file_path) => Some(hala_gfx::HalaShader::with_file(
-        Rc::clone(&self.context.logical_device),
+        Rc::clone(&context.logical_device),
         file_path,
         hala_gfx::HalaShaderStageFlags::CLOSEST_HIT,
         match intersection_file_path {
@@ -721,7 +725,7 @@ impl HalaRenderer {
     };
     let any_shader = match any_file_path {
       Some(file_path) => Some(hala_gfx::HalaShader::with_file(
-        Rc::clone(&self.context.logical_device),
+        Rc::clone(&context.logical_device),
         file_path,
         hala_gfx::HalaShaderStageFlags::ANY_HIT,
         match intersection_file_path {
@@ -734,7 +738,7 @@ impl HalaRenderer {
     };
     let intersection_shader = match intersection_file_path {
       Some(file_path) => Some(hala_gfx::HalaShader::with_file(
-        Rc::clone(&self.context.logical_device),
+        Rc::clone(&context.logical_device),
         file_path,
         hala_gfx::HalaShaderStageFlags::INTERSECTION,
         hala_gfx::HalaRayTracingShaderGroupType::PROCEDURAL_HIT_GROUP,
@@ -752,6 +756,7 @@ impl HalaRenderer {
   /// param path: The path of the blue noise texture.
   /// return: The result.
   pub fn load_blue_noise_texture<P: AsRef<Path>>(&mut self, path: P) -> Result<(), HalaRendererError> {
+    let context = self.context.borrow();
     let path = path.as_ref();
     let file_name = path.file_stem().ok_or(HalaRendererError::new("The file name is none!", None))?;
 
@@ -759,7 +764,7 @@ impl HalaRenderer {
 
     // Create the blue noise image.
     let image = hala_gfx::HalaImage::new_2d(
-      Rc::clone(&self.context.logical_device),
+      Rc::clone(&context.logical_device),
       hala_gfx::HalaImageUsageFlags::SAMPLED | hala_gfx::HalaImageUsageFlags::TRANSFER_DST,
       tex_in_cpu.format,
       tex_in_cpu.width,
@@ -793,17 +798,18 @@ impl HalaRenderer {
   /// param scene_in_cpu: The scene in the CPU.
   /// return: The result.
   pub fn set_scene(&mut self, scene_in_cpu: &cpu::HalaScene) -> Result<(), HalaRendererError> {
+    let context = self.context.borrow();
     // Release the old scene in the GPU.
     self.scene_in_gpu = None;
 
     // Upload the new scene to the GPU.
     let mut scene_in_gpu = loader::HalaSceneGPUUploader::upload(
-      &self.context,
+      &context,
       &self.transfer_command_buffers,
       scene_in_cpu)?;
     if self.is_ray_tracing {
       loader::HalaSceneGPUUploader::additively_upload_for_ray_tracing(
-        &self.context,
+        &context,
         &self.graphics_command_buffers,
         &self.transfer_command_buffers,
         scene_in_cpu, &mut scene_in_gpu)?;
@@ -818,9 +824,10 @@ impl HalaRenderer {
   /// param rotation: The rotation of the environment map.
   /// return: The result.
   pub fn set_envmap<P: AsRef<Path>>(&mut self, path: P, rotation: f32) -> Result<(), HalaRendererError> {
+    let context = self.context.borrow();
     self.envmap = Some(crate::envmap::EnvMap::new_with_file(
       path,
-      &self.context,
+      &context,
       &self.transfer_staging_buffer,
       &self.transfer_command_buffers,
     )?);
@@ -855,12 +862,14 @@ impl HalaRenderer {
 
   /// Commit all GPU resources.
   pub fn commit(&mut self) -> Result<(), HalaRendererError> {
+    let context = self.context.borrow();
+
     // Create texture descriptor set.
     let textures_descriptor_set = hala_gfx::HalaDescriptorSet::new_static(
-      Rc::clone(&self.context.logical_device),
+      Rc::clone(&context.logical_device),
       Rc::clone(&self.descriptor_pool),
       hala_gfx::HalaDescriptorSetLayout::new(
-        Rc::clone(&self.context.logical_device),
+        Rc::clone(&context.logical_device),
         &[
           ( // All textures in the scene.
             0,
@@ -899,19 +908,19 @@ impl HalaRenderer {
     let pipeline_cache = if std::path::Path::new("./out/pipeline_cache.bin").exists() {
       log::debug!("Load pipeline cache from file: ./out/pipeline_cache.bin");
       hala_gfx::HalaPipelineCache::with_cache_file(
-        Rc::clone(&self.context.logical_device),
+        Rc::clone(&context.logical_device),
         "./out/pipeline_cache.bin",
       )?
     } else {
       log::debug!("Create a new pipeline cache.");
       hala_gfx::HalaPipelineCache::new(
-        Rc::clone(&self.context.logical_device),
+        Rc::clone(&context.logical_device),
       )?
     };
 
     // Create pipeline.
     let pipeline = hala_gfx::HalaRayTracingPipeline::new(
-      Rc::clone(&self.context.logical_device),
+      Rc::clone(&context.logical_device),
       &[&self.static_descriptor_set.layout, &self.dynamic_descriptor_set.layout, &textures_descriptor_set.layout],
       self.raygen_shaders.as_slice(),
       self.miss_shaders.as_slice(),
@@ -928,7 +937,7 @@ impl HalaRenderer {
 
     // Create shader binding table.
     let sbt = hala_gfx::HalaShaderBindingTable::new(
-      Rc::clone(&self.context.logical_device),
+      Rc::clone(&context.logical_device),
       self.raygen_shaders.as_slice(),
       self.miss_shaders.as_slice(),
       self.hit_shaders.as_slice(),
@@ -1015,7 +1024,7 @@ impl HalaRenderer {
     }
 
     // Update dynamic descriptor set.
-    for index in 0..self.context.swapchain.num_of_images {
+    for index in 0..context.swapchain.num_of_images {
       self.dynamic_descriptor_set.update_uniform_buffers(
         index,
         0,
@@ -1049,13 +1058,19 @@ impl HalaRenderer {
 
   /// Update the renderer.
   /// param delta_time: The delta time.
+  /// param width: The width of the window.
+  /// param height: The height of the window.
+  /// param ui_fn: The draw UI function.
   /// return: The result.
-  pub fn update(&mut self, _delta_time: f64, width: u32, height: u32) -> Result<(), HalaRendererError> {
+  pub fn update<F>(&mut self, _delta_time: f64, width: u32, height: u32, ui_fn: F) -> Result<(), HalaRendererError>
+   where F: FnOnce(usize, &hala_gfx::HalaCommandBufferSet) -> Result<(), hala_gfx::HalaGfxError>
+  {
     self.check_and_restore_device(width, height)?;
+    let context = self.context.borrow();
 
     // Statistic.
-    if self.total_frames > self.context.swapchain.num_of_images as u64 {
-      let gpu_time = self.context.get_gpu_frame_time()?;
+    if self.total_frames > context.swapchain.num_of_images as u64 {
+      let gpu_time = context.get_gpu_frame_time()?;
       let gpu_time_nanos = gpu_time.as_nanos();
       self.total_gpu_nanoseconds += gpu_time_nanos;
       self.total_gpu_frames += 1;
@@ -1117,12 +1132,14 @@ impl HalaRenderer {
     }])?;
 
     // Update the renderer.
-    self.image_index = self.context.prepare_frame()?;
-    self.context.record_graphics_command_buffer(
+    self.image_index = context.prepare_frame()?;
+    context.record_graphics_command_buffer(
       self.image_index,
       &self.graphics_command_buffers,
       None,
-      |_, _| {
+      |index, command_buffers| {
+        ui_fn(index, command_buffers)?;
+
         Ok(())
       },
       Some(&self.final_image),
@@ -1160,6 +1177,8 @@ impl HalaRenderer {
   /// Render the renderer.
   /// return: The result.
   pub fn render(&mut self) -> Result<(), HalaRendererError> {
+    let mut context = self.context.borrow_mut();
+
     // Skip the rendering and wait to reset the device on the next frame update.
     if self.is_device_lost {
       return Ok(());
@@ -1171,7 +1190,7 @@ impl HalaRenderer {
     }
 
     // Render the renderer.
-    match self.context.submit_and_present_frame(self.image_index, &self.graphics_command_buffers) {
+    match context.submit_and_present_frame(self.image_index, &self.graphics_command_buffers) {
       Ok(_) => (),
       Err(err) => {
         if err.is_device_lost() {
@@ -1189,7 +1208,8 @@ impl HalaRenderer {
   /// Wait the renderer idle.
   /// return: The result.
   pub fn wait_idle(&self) -> Result<(), HalaRendererError> {
-    self.context.logical_device.borrow().wait_idle()?;
+    let context = self.context.borrow();
+    context.logical_device.borrow().wait_idle()?;
 
     Ok(())
   }
@@ -1198,6 +1218,8 @@ impl HalaRenderer {
   /// param path: The output path of the image.
   /// return: The result.
   pub fn save_images<P: AsRef<Path>>(&self, path: P) -> Result<(), HalaRendererError> {
+    let context = self.context.borrow();
+
     if self.is_device_lost {
       // Skip the saving and wait to reset the device on the next frame update.
       log::warn!("The device is lost! Please wait to reset the device and try again.");
@@ -1214,7 +1236,7 @@ impl HalaRenderer {
       let mut pixels = vec![0f32; 4 * self.width as usize * self.height as usize];
 
       self.wait_idle()?;
-      self.context.logical_device.borrow().transfer_execute_and_submit(
+      context.logical_device.borrow().transfer_execute_and_submit(
         &self.transfer_command_buffers,
         0,
         |_logical_device, command_buffers, index| {
@@ -1330,8 +1352,10 @@ impl HalaRenderer {
   /// param height: The height of the swapchain.
   /// return: The result.
   fn check_and_restore_device(&mut self, width: u32, height: u32) -> Result<(), HalaRendererError> {
+    let mut context = self.context.borrow_mut();
+
     if self.is_device_lost {
-      self.context.reset_swapchain(width, height)?;
+      context.reset_swapchain(width, height)?;
 
       self.width = width;
       self.height = height;
@@ -1348,7 +1372,7 @@ impl HalaRenderer {
         albedo_image,
         normal_image,
         host_accessible_buffer,
-      ) = Self::create_storage_images(&self.context)?;
+      ) = Self::create_storage_images(&context)?;
       self.final_image = std::mem::ManuallyDrop::new(final_image);
       self.accum_image = std::mem::ManuallyDrop::new(accum_image);
       self.albedo_image = std::mem::ManuallyDrop::new(albedo_image);
