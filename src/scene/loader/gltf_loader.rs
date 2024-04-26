@@ -25,7 +25,7 @@ use super::super::{
   cpu::image_data::{HalaImageDataType, HalaImageData},
   cpu::mesh::{HalaPrimitive, HalaMesh},
   cpu::light::{HalaLightType, HalaLight},
-  cpu::camera::HalaCamera,
+  cpu::camera::{HalaCamera, HalaPerspectiveCamera, HalaOrthographicCamera},
 };
 
 /// The glTF loader.
@@ -490,8 +490,19 @@ impl HalaGltfLoader {
     log::debug!("Loading camera \"{}\".", camera.name().unwrap_or("<Unnamed>"));
 
     match camera.projection() {
-      gltf::camera::Projection::Orthographic(_) => {
-        Err(HalaRendererError::new("Orthographic camera is not supported yet.", None))
+      gltf::camera::Projection::Orthographic(orthographic) => {
+        let xmag = orthographic.xmag();
+        let ymag = orthographic.ymag();
+        let znear = orthographic.znear();
+        let zfar = orthographic.zfar();
+
+        let orthography = glam::Mat4::orthographic_rh(-xmag, xmag, -ymag, ymag, znear, zfar);
+
+        Ok(HalaCamera::Orthographic(HalaOrthographicCamera {
+          xmag,
+          ymag,
+          orthography,
+        }))
       },
       gltf::camera::Projection::Perspective(perspective) => {
         let aspect = perspective.aspect_ratio().unwrap_or(1.0);
@@ -509,7 +520,7 @@ impl HalaGltfLoader {
           (10.0, 0.0)
         };
 
-        Ok(HalaCamera {
+        Ok(HalaCamera::Perspective(HalaPerspectiveCamera {
           aspect,
           yfov,
           znear,
@@ -517,7 +528,7 @@ impl HalaGltfLoader {
           focal_distance,
           aperture,
           projection,
-        })
+        }))
       },
     }
   }

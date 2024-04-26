@@ -14,9 +14,9 @@ pub struct HalaCamera {
   pub up: Vec3A,
   pub forward: Vec3,
   pub yfov: f32,
-  pub focal_distance: f32,
-  pub aperture: f32,
-  _padding: f32,
+  pub focal_distance_or_xmag: f32,
+  pub aperture_or_ymag: f32,
+  pub _type: u32,
 }
 
 /// The implementation of the camera in the GPU.
@@ -31,16 +31,33 @@ impl HalaCamera {
     let up = node_in_cpu.world_transform.y_axis.truncate();
     let forward = -node_in_cpu.world_transform.z_axis.truncate();
 
-    Self {
-      position: position.into(),
-      right: right.into(),
-      up: up.into(),
-      forward,
-      yfov: camera_in_cpu.yfov,
-      focal_distance: camera_in_cpu.focal_distance,
-      aperture: camera_in_cpu.aperture,
-      _padding: 0.0,
+    match camera_in_cpu {
+      HalaCameraInCPU::Perspective(camera) => {
+        Self {
+          position: position.into(),
+          right: right.into(),
+          up: up.into(),
+          forward,
+          yfov: camera.yfov,
+          focal_distance_or_xmag: camera.focal_distance,
+          aperture_or_ymag: camera.aperture,
+          _type: 0,
+        }
+      },
+      HalaCameraInCPU::Orthographic(camera) => {
+        Self {
+          position: position.into(),
+          right: right.into(),
+          up: up.into(),
+          forward,
+          yfov: 0.0,
+          focal_distance_or_xmag: camera.xmag,
+          aperture_or_ymag: camera.ymag,
+          _type: 1,
+        }
+      },
     }
+
   }
 
 }

@@ -1,7 +1,7 @@
 use glam::Mat4;
 
-/// A camera in the scene.
-pub struct HalaCamera {
+/// A perspective camera in the scene.
+pub struct HalaPerspectiveCamera {
   pub aspect: f32,
   pub yfov: f32,
   pub znear: f32,
@@ -10,4 +10,18 @@ pub struct HalaCamera {
   pub aperture: f32,
 
   pub projection: Mat4,
+}
+
+/// A orthographic camera in the scene.
+pub struct HalaOrthographicCamera {
+  pub xmag: f32,
+  pub ymag: f32,
+
+  pub orthography: Mat4,
+}
+
+/// A camera in the scene.
+pub enum HalaCamera {
+  Perspective(HalaPerspectiveCamera),
+  Orthographic(HalaOrthographicCamera),
 }
