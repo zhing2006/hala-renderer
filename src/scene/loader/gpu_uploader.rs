@@ -42,14 +42,18 @@ pub struct HalaSceneGPUUploader;
 impl HalaSceneGPUUploader {
   /// Upload the scene to the GPU from the CPU for rasterization.
   /// param context: The gfx context.
+  /// param graphics_command_buffers: The graphics command buffers.
   /// param transfer_command_buffers: The transfer command buffers.
   /// param scene_in_cpu: The scene in the CPU.
+  /// param use_for_ray_tracing: Whether the scene is used for ray tracing.
   /// return: The scene in the GPU.
   pub fn upload(
     context: &HalaContext,
+    graphics_command_buffers: &HalaCommandBufferSet,
     transfer_command_buffers: &HalaCommandBufferSet,
-    scene_in_cpu: &cpu::HalaScene) -> Result<gpu::HalaScene, HalaRendererError>
-  {
+    scene_in_cpu: &cpu::HalaScene,
+    use_for_ray_tracing: bool,
+  ) -> Result<gpu::HalaScene, HalaRendererError> {
     // Calculate the buffer size.
     let camera_buffer_size = (std::mem::size_of::<gpu::HalaCamera>() * MAX_CAMERA_COUNT) as u64;
     let light_buffer_size = (std::mem::size_of::<gpu::HalaLight>() * MAX_LIGHT_COUNT) as u64;
@@ -111,7 +115,7 @@ impl HalaSceneGPUUploader {
       HalaBufferUsageFlags::STORAGE_BUFFER |
       HalaBufferUsageFlags::TRANSFER_DST |
       HalaBufferUsageFlags::SHADER_DEVICE_ADDRESS |
-      HalaBufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY,
+      (if use_for_ray_tracing { HalaBufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY } else { HalaBufferUsageFlags::default()}),
       HalaMemoryLocation::GpuOnly,
       "light_aabbs.buffer")?;
 
@@ -345,7 +349,7 @@ impl HalaSceneGPUUploader {
           cpu::image_data::HalaImageDataType::ByteData(ref data) => {
             image.update_gpu_memory_with_buffer(
               data.as_slice(),
-              hala_gfx::HalaPipelineStageFlags2::RAY_TRACING_SHADER
+              (if use_for_ray_tracing { hala_gfx::HalaPipelineStageFlags2::RAY_TRACING_SHADER } else { hala_gfx::HalaPipelineStageFlags2::default() })
                 | hala_gfx::HalaPipelineStageFlags2::COMPUTE_SHADER
                 | hala_gfx::HalaPipelineStageFlags2::TRANSFER,
               &image_staging,
@@ -354,7 +358,7 @@ impl HalaSceneGPUUploader {
           cpu::image_data::HalaImageDataType::FloatData(ref data) => {
             image.update_gpu_memory_with_buffer(
               data.as_slice(),
-              hala_gfx::HalaPipelineStageFlags2::RAY_TRACING_SHADER
+              (if use_for_ray_tracing { hala_gfx::HalaPipelineStageFlags2::RAY_TRACING_SHADER } else { hala_gfx::HalaPipelineStageFlags2::default() })
                 | hala_gfx::HalaPipelineStageFlags2::COMPUTE_SHADER
                 | hala_gfx::HalaPipelineStageFlags2::TRANSFER,
               &image_staging,
@@ -388,10 +392,10 @@ impl HalaSceneGPUUploader {
           Rc::clone(&context.logical_device),
           vertex_buffer_size,
           HalaBufferUsageFlags::VERTEX_BUFFER
-          | HalaBufferUsageFlags::TRANSFER_DST
-          | HalaBufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY
-          | HalaBufferUsageFlags::SHADER_DEVICE_ADDRESS
-          | HalaBufferUsageFlags::STORAGE_BUFFER,
+            | HalaBufferUsageFlags::TRANSFER_DST
+            | (if use_for_ray_tracing { HalaBufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY } else { HalaBufferUsageFlags::default() })
+            | HalaBufferUsageFlags::SHADER_DEVICE_ADDRESS
+            | HalaBufferUsageFlags::STORAGE_BUFFER,
           HalaMemoryLocation::GpuOnly,
           &format!("mesh_{}_prim_{}_vertex.buffer", mesh_index, prim_index))?;
         vertex_buffer.update_gpu_memory_with_buffer_raw(
@@ -405,10 +409,10 @@ impl HalaSceneGPUUploader {
           Rc::clone(&context.logical_device),
           index_buffer_size,
           HalaBufferUsageFlags::INDEX_BUFFER
-          | HalaBufferUsageFlags::TRANSFER_DST
-          | HalaBufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY
-          | HalaBufferUsageFlags::SHADER_DEVICE_ADDRESS
-          | HalaBufferUsageFlags::STORAGE_BUFFER,
+            | HalaBufferUsageFlags::TRANSFER_DST
+            | (if use_for_ray_tracing { HalaBufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY } else { HalaBufferUsageFlags::default() })
+            | HalaBufferUsageFlags::SHADER_DEVICE_ADDRESS
+            | HalaBufferUsageFlags::STORAGE_BUFFER,
           HalaMemoryLocation::GpuOnly,
           &format!("mesh_{}_prim_{}_index.buffer", mesh_index, prim_index))?;
         index_buffer.update_gpu_memory_with_buffer_raw(
@@ -433,7 +437,7 @@ impl HalaSceneGPUUploader {
       });
     }
 
-    Ok(gpu::HalaScene {
+    let mut scene_in_gpu = gpu::HalaScene {
       cameras: camera_buffer,
       lights: light_buffer,
       light_aabbs: light_aabb_buffer,
@@ -447,7 +451,19 @@ impl HalaSceneGPUUploader {
       primitives: None,
       light_btlas: None,
       light_data: lights,
-    })
+    };
+
+    if use_for_ray_tracing {
+      Self::additively_upload_for_ray_tracing(
+        context,
+        graphics_command_buffers,
+        transfer_command_buffers,
+        scene_in_cpu,
+        &mut scene_in_gpu,
+      )?;
+    }
+
+    Ok(scene_in_gpu)
   }
 
   /// Additively upload the scene to the GPU from the CPU for ray tracing.
@@ -457,7 +473,7 @@ impl HalaSceneGPUUploader {
   /// param scene_in_cpu: The scene in the CPU.
   /// param scene_in_gpu: The scene in the GPU.
   /// return: The result.
-  pub fn additively_upload_for_ray_tracing(
+  fn additively_upload_for_ray_tracing(
     context: &HalaContext,
     graphics_command_buffers: &HalaCommandBufferSet,
     transfer_command_buffers: &HalaCommandBufferSet,
@@ -644,4 +660,5 @@ impl HalaSceneGPUUploader {
 
     Ok(())
   }
+
 }

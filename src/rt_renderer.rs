@@ -73,7 +73,6 @@ pub struct HalaRenderer {
   pub max_frames: u64,
 
   pub context: std::mem::ManuallyDrop<Rc<RefCell<HalaContext>>>,
-  pub is_ray_tracing: bool,
 
   pub(crate) graphics_command_buffers: std::mem::ManuallyDrop<hala_gfx::HalaCommandBufferSet>,
   pub(crate) transfer_command_buffers: std::mem::ManuallyDrop<hala_gfx::HalaCommandBufferSet>,
@@ -165,16 +164,18 @@ impl HalaRenderer {
   /// param name: The name of the renderer.
   /// param gpu_req: The GPU requirements of the renderer.
   /// param window: The window of the renderer.
-  /// param is_ray_tracing: Whether the renderer is for ray tracing.
   /// param max_depth: The max depth of the ray tracing.
   /// param rr_depth: The Russian Roulette depth of the ray tracing.
+  /// param enable_tonemap: Enable the tonemap or not.
+  /// param enable_aces: Enable the ACES tonemap or not.
+  /// param use_simple_aces: Use the simple ACES tonemap or not.
+  /// param max_frames: The max frames of the renderer.
   /// return: The renderer.
   #[allow(clippy::too_many_arguments)]
   pub fn new(
     name: &str,
     gpu_req: &HalaGPURequirements,
     window: &winit::window::Window,
-    is_ray_tracing: bool,
     max_depth: u32,
     rr_depth: u32,
     enable_tonemap: bool,
@@ -406,7 +407,6 @@ impl HalaRenderer {
       max_frames: if max_frames == 0 { std::u64::MAX } else { max_frames },
 
       context: std::mem::ManuallyDrop::new(Rc::new(RefCell::new(context))),
-      is_ray_tracing,
       graphics_command_buffers: std::mem::ManuallyDrop::new(graphics_command_buffers),
       transfer_command_buffers: std::mem::ManuallyDrop::new(transfer_command_buffers),
       transfer_staging_buffer: std::mem::ManuallyDrop::new(transfer_staging_buffer),
@@ -803,17 +803,12 @@ impl HalaRenderer {
     self.scene_in_gpu = None;
 
     // Upload the new scene to the GPU.
-    let mut scene_in_gpu = loader::HalaSceneGPUUploader::upload(
+    let scene_in_gpu = loader::HalaSceneGPUUploader::upload(
       &context,
+      &self.graphics_command_buffers,
       &self.transfer_command_buffers,
-      scene_in_cpu)?;
-    if self.is_ray_tracing {
-      loader::HalaSceneGPUUploader::additively_upload_for_ray_tracing(
-        &context,
-        &self.graphics_command_buffers,
-        &self.transfer_command_buffers,
-        scene_in_cpu, &mut scene_in_gpu)?;
-    }
+      scene_in_cpu,
+      true)?;
     self.scene_in_gpu = Some(scene_in_gpu);
 
     Ok(())

@@ -7,6 +7,11 @@ use hala_gfx::{
 };
 
 use crate::error::HalaRendererError;
+use crate::scene::{
+  cpu,
+  gpu,
+  loader,
+};
 
 #[repr(C, align(4))]
 #[derive(Debug, Clone, Copy)]
@@ -62,6 +67,8 @@ pub struct HalaRenderer {
   // Compute Shader.
   pub(crate) compute_shaders: Vec<hala_gfx::HalaShader>,
 
+  pub(crate) scene_in_gpu: Option<gpu::HalaScene>,
+
   // Render data.
   pub image_index: usize,
   pub is_device_lost: bool,
@@ -79,6 +86,8 @@ pub struct HalaRenderer {
 impl Drop for HalaRenderer {
 
   fn drop(&mut self) {
+    self.scene_in_gpu = None;
+
     self.traditional_shaders.clear();
     self.shaders.clear();
     self.compute_shaders.clear();
@@ -256,6 +265,8 @@ impl HalaRenderer {
       shaders: Vec::new(),
       compute_shaders: Vec::new(),
 
+      scene_in_gpu: None,
+
       image_index: 0,
       is_device_lost: false,
 
@@ -368,6 +379,27 @@ impl HalaRenderer {
     )?;
 
     self.compute_shaders.push(compute_shader);
+
+    Ok(())
+  }
+
+  /// Set the scene to be rendered.
+  /// param scene_in_cpu: The scene in the CPU.
+  /// return: The result.
+  pub fn set_scene(&mut self, scene_in_cpu: &cpu::HalaScene) -> Result<(), HalaRendererError> {
+    let context = self.context.borrow();
+    // Release the old scene in the GPU.
+    self.scene_in_gpu = None;
+
+    // Upload the new scene to the GPU.
+    let scene_in_gpu = loader::HalaSceneGPUUploader::upload(
+      &context,
+      &self.graphics_command_buffers,
+      &self.transfer_command_buffers,
+      scene_in_cpu,
+    false)?;
+
+    self.scene_in_gpu = Some(scene_in_gpu);
 
     Ok(())
   }
