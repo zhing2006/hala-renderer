@@ -55,6 +55,13 @@ pub struct HalaRenderer {
   pub(crate) global_uniform_buffer: std::mem::ManuallyDrop<hala_gfx::HalaBuffer>,
   pub(crate) object_uniform_buffer: std::mem::ManuallyDrop<hala_gfx::HalaBuffer>,
 
+  // Vertex Shader, Fragment Shader.
+  pub(crate) traditional_shaders: Vec<(hala_gfx::HalaShader, hala_gfx::HalaShader)>,
+  // Task Shader, Mesh Shader and Fragment Shader.
+  pub(crate) shaders: Vec<(Option<hala_gfx::HalaShader>, hala_gfx::HalaShader, hala_gfx::HalaShader)>,
+  // Compute Shader.
+  pub(crate) compute_shaders: Vec<hala_gfx::HalaShader>,
+
   // Render data.
   pub image_index: usize,
   pub is_device_lost: bool,
@@ -72,6 +79,10 @@ pub struct HalaRenderer {
 impl Drop for HalaRenderer {
 
   fn drop(&mut self) {
+    self.traditional_shaders.clear();
+    self.shaders.clear();
+    self.compute_shaders.clear();
+
     unsafe {
       std::mem::ManuallyDrop::drop(&mut self.object_uniform_buffer);
       std::mem::ManuallyDrop::drop(&mut self.global_uniform_buffer);
@@ -245,6 +256,10 @@ impl HalaRenderer {
       global_uniform_buffer: std::mem::ManuallyDrop::new(global_uniform_buffer),
       object_uniform_buffer: std::mem::ManuallyDrop::new(object_uniform_buffer),
 
+      traditional_shaders: Vec::new(),
+      shaders: Vec::new(),
+      compute_shaders: Vec::new(),
+
       image_index: 0,
       is_device_lost: false,
 
@@ -254,6 +269,111 @@ impl HalaRenderer {
       total_gpu_nanoseconds: 0,
       total_gpu_frames: 0,
     })
+  }
+
+  /// Push traditional shaders to the renderer.
+  /// param vertex_file_path: The vertex shader file path.
+  /// param fragment_file_path: The fragment shader file path.
+  /// param debug_name: The debug name of the shader.
+  /// return: The result.
+  pub fn push_traditional_shaders_with_file(
+    &mut self,
+    vertex_file_path: &str,
+    fragment_file_path: &str,
+    debug_name: &str) -> Result<(), HalaRendererError>
+  {
+    let context = self.context.borrow();
+
+    let vertex_shader = hala_gfx::HalaShader::with_file(
+      Rc::clone(&context.logical_device),
+      vertex_file_path,
+      hala_gfx::HalaShaderStageFlags::VERTEX,
+      hala_gfx::HalaRayTracingShaderGroupType::GENERAL,
+      &format!("{}.vert", debug_name),
+    )?;
+
+    let fragment_shader = hala_gfx::HalaShader::with_file(
+      Rc::clone(&context.logical_device),
+      fragment_file_path,
+      hala_gfx::HalaShaderStageFlags::FRAGMENT,
+      hala_gfx::HalaRayTracingShaderGroupType::GENERAL,
+      &format!("{}.frag", debug_name),
+    )?;
+
+    self.traditional_shaders.push((vertex_shader, fragment_shader));
+
+    Ok(())
+  }
+
+  /// Push shaders to the renderer.
+  /// param task_file_path: The task shader file path.
+  /// param mesh_file_path: The mesh shader file path.
+  /// param fragment_file_path: The fragment shader file path.
+  /// param debug_name: The debug name of the shader.
+  /// return: The result.
+  pub fn push_shaders_with_file(
+    &mut self,
+    task_file_path: Option<&str>,
+    mesh_file_path: &str,
+    fragment_file_path: &str,
+    debug_name: &str) -> Result<(), HalaRendererError>
+  {
+    let context = self.context.borrow();
+
+    let task_shader = match task_file_path {
+      Some(file_path) => Some(hala_gfx::HalaShader::with_file(
+        Rc::clone(&context.logical_device),
+        file_path,
+        hala_gfx::HalaShaderStageFlags::TASK,
+        hala_gfx::HalaRayTracingShaderGroupType::GENERAL,
+        &format!("{}.task", debug_name),
+      )?),
+      None => None,
+    };
+
+    let mesh_shader = hala_gfx::HalaShader::with_file(
+      Rc::clone(&context.logical_device),
+      mesh_file_path,
+      hala_gfx::HalaShaderStageFlags::MESH,
+      hala_gfx::HalaRayTracingShaderGroupType::GENERAL,
+      &format!("{}.mesh", debug_name),
+    )?;
+
+    let fragment_shader = hala_gfx::HalaShader::with_file(
+      Rc::clone(&context.logical_device),
+      fragment_file_path,
+      hala_gfx::HalaShaderStageFlags::FRAGMENT,
+      hala_gfx::HalaRayTracingShaderGroupType::GENERAL,
+      &format!("{}.frag", debug_name),
+    )?;
+
+    self.shaders.push((task_shader, mesh_shader, fragment_shader));
+
+    Ok(())
+  }
+
+  /// Push compute shaders to the renderer.
+  /// param file_path: The compute shader file path.
+  /// param debug_name: The debug name of the shader.
+  /// return: The result.
+  pub fn push_compute_shaders_with_file(
+    &mut self,
+    file_path: &str,
+    debug_name: &str) -> Result<(), HalaRendererError>
+  {
+    let context = self.context.borrow();
+
+    let compute_shader = hala_gfx::HalaShader::with_file(
+      Rc::clone(&context.logical_device),
+      file_path,
+      hala_gfx::HalaShaderStageFlags::COMPUTE,
+      hala_gfx::HalaRayTracingShaderGroupType::GENERAL,
+      &format!("{}.comp", debug_name),
+    )?;
+
+    self.compute_shaders.push(compute_shader);
+
+    Ok(())
   }
 
   /// Commit all GPU resources.
