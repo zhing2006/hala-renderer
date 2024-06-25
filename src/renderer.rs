@@ -69,6 +69,8 @@ pub struct HalaRenderer {
 
   pub(crate) scene_in_gpu: Option<gpu::HalaScene>,
 
+  pub(crate) pso: Vec<hala_gfx::HalaGraphicsPipeline>,
+
   // Render data.
   pub image_index: usize,
   pub is_device_lost: bool,
@@ -86,6 +88,8 @@ pub struct HalaRenderer {
 impl Drop for HalaRenderer {
 
   fn drop(&mut self) {
+    self.pso.clear();
+
     self.scene_in_gpu = None;
 
     self.traditional_shaders.clear();
@@ -267,6 +271,8 @@ impl HalaRenderer {
 
       scene_in_gpu: None,
 
+      pso: Vec::new(),
+
       image_index: 0,
       is_device_lost: false,
 
@@ -406,6 +412,85 @@ impl HalaRenderer {
 
   /// Commit all GPU resources.
   pub fn commit(&mut self) -> Result<(), HalaRendererError> {
+    let context = self.context.borrow();
+
+    // If we have cache file at ./out/pipeline_cache.bin, we can load it.
+    let pipeline_cache = if std::path::Path::new("./out/pipeline_cache.bin").exists() {
+      log::debug!("Load pipeline cache from file: ./out/pipeline_cache.bin");
+      hala_gfx::HalaPipelineCache::with_cache_file(
+        Rc::clone(&context.logical_device),
+        "./out/pipeline_cache.bin",
+      )?
+    } else {
+      log::debug!("Create a new pipeline cache.");
+      hala_gfx::HalaPipelineCache::new(
+        Rc::clone(&context.logical_device),
+      )?
+    };
+
+    // Create traditional graphics pipelines.
+    for (i, (vertex_shader, fragment_shader)) in self.traditional_shaders.iter().enumerate() {
+      self.pso.push(
+        hala_gfx::HalaGraphicsPipeline::new(
+          Rc::clone(&context.logical_device),
+          &context.swapchain,
+          &[&self.static_descriptor_set.layout, &self.dynamic_descriptor_set.layout],
+          &[
+            hala_gfx::HalaVertexInputAttributeDescription {
+              binding: 0,
+              location: 0,
+              offset: 0,
+              format: hala_gfx::HalaFormat::R32G32B32A32_SFLOAT, // Position.
+            },
+            hala_gfx::HalaVertexInputAttributeDescription {
+              binding: 0,
+              location: 1,
+              offset: 16,
+              format: hala_gfx::HalaFormat::R32G32B32A32_SFLOAT, // Normal.
+            },
+            hala_gfx::HalaVertexInputAttributeDescription {
+              binding: 0,
+              location: 2,
+              offset: 32,
+              format: hala_gfx::HalaFormat::R32G32B32A32_SFLOAT, // Tangent.
+            },
+            hala_gfx::HalaVertexInputAttributeDescription {
+              binding: 0,
+              location: 3,
+              offset: 48,
+              format: hala_gfx::HalaFormat::R32G32B32A32_SFLOAT,  // UV.
+            },
+          ],
+          &[
+            hala_gfx::HalaVertexInputBindingDescription {
+              binding: 0,
+              stride: 64,
+              input_rate: hala_gfx::HalaVertexInputRate::VERTEX,
+            }
+          ],
+          &[
+            hala_gfx::HalaPushConstantRange {
+              stage_flags: hala_gfx::HalaShaderStageFlags::VERTEX,
+              offset: 0,
+              size: 4,  // Material index.
+            },
+          ],
+          hala_gfx::HalaPrimitiveTopology::TRIANGLE_LIST,
+          (hala_gfx::HalaBlendFactor::SRC_ALPHA, hala_gfx::HalaBlendFactor::ONE_MINUS_SRC_ALPHA, hala_gfx::HalaBlendOp::ADD),
+          (hala_gfx::HalaBlendFactor::ONE, hala_gfx::HalaBlendFactor::ZERO, hala_gfx::HalaBlendOp::ADD),
+          (1.0, hala_gfx::HalaFrontFace::COUNTER_CLOCKWISE, hala_gfx::HalaCullModeFlags::BACK, hala_gfx::HalaPolygonMode::FILL),
+          (true, true, hala_gfx::HalaCompareOp::LESS),
+          &[vertex_shader, fragment_shader],
+          &[],
+          Some(&pipeline_cache),
+          &format!("traditional_{}.graphics_pipeline", i),
+        )?
+      );
+    }
+
+    // Save pipeline cache.
+    pipeline_cache.save("./out/pipeline_cache.bin")?;
+
     Ok(())
   }
 
