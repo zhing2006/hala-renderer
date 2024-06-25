@@ -147,10 +147,6 @@ impl HalaRenderer {
       Rc::clone(&context.logical_device),
       &[
         (
-          hala_gfx::HalaDescriptorType::ACCELERATION_STRUCTURE,
-          4,
-        ),
-        (
           hala_gfx::HalaDescriptorType::STORAGE_IMAGE,
           8,
         ),
