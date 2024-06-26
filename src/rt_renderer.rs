@@ -1011,7 +1011,7 @@ impl HalaRenderer {
         &[&envmap.marginal_distribution_image, &envmap.conditional_distribution_image],
       );
       static_binding_index += 1;
-      self.static_descriptor_set.update_sampler(
+      self.static_descriptor_set.update_samplers(
         0,
         static_binding_index,
         &[&envmap.distribution_sampler],
