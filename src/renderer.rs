@@ -42,6 +42,7 @@ pub struct HalaObjectUniform {
 }
 
 /// The renderer.
+/// NOTICE: Only support object movement every frame, camera and light can NOT be moved.
 pub struct HalaRenderer {
 
   pub name: String,
@@ -59,7 +60,7 @@ pub struct HalaRenderer {
   pub(crate) static_descriptor_set: std::mem::ManuallyDrop<hala_gfx::HalaDescriptorSet>,
   pub(crate) dynamic_descriptor_set: std::mem::ManuallyDrop<hala_gfx::HalaDescriptorSet>,
   pub(crate) global_uniform_buffer: std::mem::ManuallyDrop<hala_gfx::HalaBuffer>,
-  pub(crate) object_uniform_buffer: std::mem::ManuallyDrop<hala_gfx::HalaBuffer>,
+  pub(crate) object_uniform_buffers: Vec<hala_gfx::HalaBuffer>,
 
   // Vertex Shader, Fragment Shader.
   pub(crate) traditional_shaders: Vec<(hala_gfx::HalaShader, hala_gfx::HalaShader)>,
@@ -99,8 +100,8 @@ impl Drop for HalaRenderer {
     self.shaders.clear();
     self.compute_shaders.clear();
 
+    self.object_uniform_buffers.clear();
     unsafe {
-      std::mem::ManuallyDrop::drop(&mut self.object_uniform_buffer);
       std::mem::ManuallyDrop::drop(&mut self.global_uniform_buffer);
       std::mem::ManuallyDrop::drop(&mut self.dynamic_descriptor_set);
       std::mem::ManuallyDrop::drop(&mut self.static_descriptor_set);
@@ -264,13 +265,17 @@ impl HalaRenderer {
     )?;
 
     // Create object uniform buffer.
-    let object_uniform_buffer = hala_gfx::HalaBuffer::new(
-      Rc::clone(&context.logical_device),
-      std::mem::size_of::<HalaObjectUniform>() as u64,
-      hala_gfx::HalaBufferUsageFlags::UNIFORM_BUFFER,
-      hala_gfx::HalaMemoryLocation::CpuToGpu,
-      "object.uniform_buffer",
-    )?;
+    let mut object_uniform_buffers = Vec::new();
+    for index in 0..context.swapchain.num_of_images {
+      let object_uniform_buffer = hala_gfx::HalaBuffer::new(
+        Rc::clone(&context.logical_device),
+        std::mem::size_of::<HalaObjectUniform>() as u64,
+        hala_gfx::HalaBufferUsageFlags::UNIFORM_BUFFER,
+        hala_gfx::HalaMemoryLocation::CpuToGpu,
+        &format!("object_{}.uniform_buffer", index),
+      )?;
+      object_uniform_buffers.push(object_uniform_buffer);
+    }
 
     // Return the renderer.
     log::debug!("A HalaRenderer \"{}\"[{} x {}] is created.", name, width, height);
@@ -289,7 +294,7 @@ impl HalaRenderer {
       static_descriptor_set: std::mem::ManuallyDrop::new(static_descriptor_set),
       dynamic_descriptor_set: std::mem::ManuallyDrop::new(dynamic_descriptor_set),
       global_uniform_buffer: std::mem::ManuallyDrop::new(global_uniform_buffer),
-      object_uniform_buffer: std::mem::ManuallyDrop::new(object_uniform_buffer),
+      object_uniform_buffers: object_uniform_buffers,
 
       traditional_shaders: Vec::new(),
       shaders: Vec::new(),
@@ -453,7 +458,7 @@ impl HalaRenderer {
 
     // Update dynamic descriptor set.
     for index in 0..context.swapchain.num_of_images {
-      self.dynamic_descriptor_set.update_uniform_buffers(index, 0, &[self.object_uniform_buffer.as_ref()]);
+      self.dynamic_descriptor_set.update_uniform_buffers(index, 0, &[self.object_uniform_buffers[index].as_ref()]);
     }
 
     // Create texture descriptor set.
@@ -502,7 +507,6 @@ impl HalaRenderer {
       textures_descriptor_set.update_sampled_images(0, 0, final_images.as_slice());
       textures_descriptor_set.update_samplers(0, 1, final_samplers.as_slice());
     }
-    self.textures_descriptor_set = Some(textures_descriptor_set);
 
     // If we have cache file at ./out/pipeline_cache.bin, we can load it.
     let pipeline_cache = if std::path::Path::new("./out/pipeline_cache.bin").exists() {
@@ -519,16 +523,12 @@ impl HalaRenderer {
     };
 
     // Create traditional graphics pipelines.
-    let layouts = match self.textures_descriptor_set {
-      Some(ref textures_descriptor_set) => vec![&self.static_descriptor_set.layout, &self.dynamic_descriptor_set.layout, &textures_descriptor_set.layout],
-      None => vec![&self.static_descriptor_set.layout, &self.dynamic_descriptor_set.layout],
-    };
     for (i, (vertex_shader, fragment_shader)) in self.traditional_shaders.iter().enumerate() {
       self.pso.push(
         hala_gfx::HalaGraphicsPipeline::new(
           Rc::clone(&context.logical_device),
           &context.swapchain,
-          layouts.as_slice(),
+          &[&self.static_descriptor_set.layout, &self.dynamic_descriptor_set.layout, &textures_descriptor_set.layout],
           &[
             hala_gfx::HalaVertexInputAttributeDescription {
               binding: 0,
@@ -584,6 +584,8 @@ impl HalaRenderer {
 
     // Save pipeline cache.
     pipeline_cache.save("./out/pipeline_cache.bin")?;
+
+    self.textures_descriptor_set = Some(textures_descriptor_set);
 
     Ok(())
   }
