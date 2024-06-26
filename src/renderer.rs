@@ -457,7 +457,7 @@ impl HalaRenderer {
     self.global_uniform_buffer.update_memory(0, &[HalaGlobalUniform {
       v_mtx: scene.camera_view_matrices[0],
       p_mtx: scene.camera_proj_matrices[0],
-      vp_mtx: scene.camera_view_matrices[0] * scene.camera_proj_matrices[0],
+      vp_mtx: scene.camera_proj_matrices[0] * scene.camera_view_matrices[0],
     }])?;
 
     // Update static descriptor set.
@@ -574,7 +574,7 @@ impl HalaRenderer {
           ],
           &[
             hala_gfx::HalaPushConstantRange {
-              stage_flags: hala_gfx::HalaShaderStageFlags::VERTEX,
+              stage_flags: hala_gfx::HalaShaderStageFlags::VERTEX | hala_gfx::HalaShaderStageFlags::FRAGMENT,
               offset: 0,
               size: 4,  // Material index.
             },
@@ -583,7 +583,7 @@ impl HalaRenderer {
           (hala_gfx::HalaBlendFactor::SRC_ALPHA, hala_gfx::HalaBlendFactor::ONE_MINUS_SRC_ALPHA, hala_gfx::HalaBlendOp::ADD),
           (hala_gfx::HalaBlendFactor::ONE, hala_gfx::HalaBlendFactor::ZERO, hala_gfx::HalaBlendOp::ADD),
           (1.0, hala_gfx::HalaFrontFace::COUNTER_CLOCKWISE, hala_gfx::HalaCullModeFlags::BACK, hala_gfx::HalaPolygonMode::FILL),
-          (true, true, hala_gfx::HalaCompareOp::LESS),
+          (true, true, hala_gfx::HalaCompareOp::GREATER), // We use reverse Z, so greater is less.
           &[vertex_shader, fragment_shader],
           &[],
           Some(&pipeline_cache),
@@ -675,15 +675,77 @@ impl HalaRenderer {
     }
     self.total_frames += 1;
 
-    // TODO: Update resources.
-
     // Update the renderer.
     self.image_index = context.prepare_frame()?;
     context.record_graphics_command_buffer(
       self.image_index,
       &self.graphics_command_buffers,
-      Some(([25.0 / 255.0, 118.0 / 255.0, 210.0 / 255.0, 1.0], 1.0, 0)),
+      Some(([25.0 / 255.0, 118.0 / 255.0, 210.0 / 255.0, 1.0], 0.0, 0)),  // We use reverse Z, so clear depth to 0.0.
       |index, command_buffers| {
+        // Render the scene.
+        let scene = self.scene_in_gpu.as_ref().ok_or(hala_gfx::HalaGfxError::new("The scene in GPU is none!", None))?;
+        for mesh in scene.meshes.iter() {
+          let mv_mtx = scene.camera_view_matrices[0] * mesh.transform;
+          let object_uniform = HalaObjectUniform {
+            m_mtx: mesh.transform,
+            i_m_mtx: mesh.transform.inverse(),
+            mv_mtx,
+            t_mv_mtx: mv_mtx.transpose(),
+            it_mv_mtx: mv_mtx.inverse().transpose(),
+            mvp_mtx: scene.camera_proj_matrices[0] * mv_mtx,
+          };
+          self.object_uniform_buffers[index].update_memory(0, &[object_uniform])?;
+
+          for primitive in mesh.primitives.iter() {
+            // TODO: Only use default pipeline.
+            command_buffers.bind_graphics_pipeline(index, &self.pso[0]);
+
+            // Bind descriptor sets.
+            command_buffers.bind_graphics_descriptor_sets(
+              index,
+              &self.pso[0],
+              0,
+              &[
+                self.static_descriptor_set.as_ref(),
+                self.dynamic_descriptor_set.as_ref(),
+                self.textures_descriptor_set.as_ref().ok_or(hala_gfx::HalaGfxError::new("The textures descriptor set is none!", None))?],
+              &[],
+            );
+
+            // Bind vertex buffers.
+            command_buffers.bind_vertex_buffers(
+              index,
+              0,
+              &[primitive.vertex_buffer.as_ref()],
+              &[0]);
+
+            // Bind index buffer.
+            command_buffers.bind_index_buffers(
+              index,
+              &[primitive.index_buffer.as_ref()],
+              &[0],
+              hala_gfx::HalaIndexType::UINT32);
+
+            // Push constants.
+            command_buffers.push_constants_f32(
+              index,
+              &self.pso[0],
+              hala_gfx::HalaShaderStageFlags::VERTEX | hala_gfx::HalaShaderStageFlags::FRAGMENT,
+              0,
+              &[primitive.material_index as f32],
+            );
+
+            // Draw.
+            command_buffers.draw_indexed(
+              index,
+              primitive.index_count,
+              1,
+              0,
+              0,
+              0);
+          }
+        }
+
         ui_fn(index, command_buffers)?;
 
         Ok(())
