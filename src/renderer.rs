@@ -176,11 +176,11 @@ impl HalaRenderer {
         ),
         (
           hala_gfx::HalaDescriptorType::SAMPLED_IMAGE,
-          64,
+          256,
         ),
         (
           hala_gfx::HalaDescriptorType::SAMPLER,
-          16,
+          256,
         ),
         (
           hala_gfx::HalaDescriptorType::COMBINED_IMAGE_SAMPLER,
@@ -203,7 +203,28 @@ impl HalaRenderer {
             1,
             hala_gfx::HalaShaderStageFlags::VERTEX | hala_gfx::HalaShaderStageFlags::FRAGMENT | hala_gfx::HalaShaderStageFlags::COMPUTE,
             hala_gfx::HalaDescriptorBindingFlags::PARTIALLY_BOUND
-          )
+          ),
+          ( // Cameras uniform buffer.
+            1,
+            hala_gfx::HalaDescriptorType::UNIFORM_BUFFER,
+            1,
+            hala_gfx::HalaShaderStageFlags::VERTEX | hala_gfx::HalaShaderStageFlags::FRAGMENT | hala_gfx::HalaShaderStageFlags::COMPUTE,
+            hala_gfx::HalaDescriptorBindingFlags::PARTIALLY_BOUND
+          ),
+          ( // Lights uniform buffer.
+            2,
+            hala_gfx::HalaDescriptorType::UNIFORM_BUFFER,
+            1,
+            hala_gfx::HalaShaderStageFlags::VERTEX | hala_gfx::HalaShaderStageFlags::FRAGMENT | hala_gfx::HalaShaderStageFlags::COMPUTE,
+            hala_gfx::HalaDescriptorBindingFlags::PARTIALLY_BOUND
+          ),
+          ( // Materials storage buffer.
+            3,
+            hala_gfx::HalaDescriptorType::STORAGE_BUFFER,
+            1,
+            hala_gfx::HalaShaderStageFlags::VERTEX | hala_gfx::HalaShaderStageFlags::FRAGMENT | hala_gfx::HalaShaderStageFlags::COMPUTE,
+            hala_gfx::HalaDescriptorBindingFlags::PARTIALLY_BOUND
+          ),
         ],
         "main_static.descriptor_set_layout",
       )?,
@@ -421,6 +442,20 @@ impl HalaRenderer {
   pub fn commit(&mut self) -> Result<(), HalaRendererError> {
     let context = self.context.borrow();
 
+    // Update static descriptor set.
+    self.static_descriptor_set.update_uniform_buffers(0, 0, &[self.global_uniform_buffer.as_ref()]);
+    self.static_descriptor_set.update_uniform_buffers(0, 1, &[
+      self.scene_in_gpu.as_ref().ok_or(HalaRendererError::new("The scene in GPU is none!", None))?.cameras.as_ref()]);
+    self.static_descriptor_set.update_uniform_buffers(0, 2, &[
+      self.scene_in_gpu.as_ref().ok_or(HalaRendererError::new("The scene in GPU is none!", None))?.lights.as_ref()]);
+    self.static_descriptor_set.update_storage_buffers(0, 3, &[
+      self.scene_in_gpu.as_ref().ok_or(HalaRendererError::new("The scene in GPU is none!", None))?.materials.as_ref()]);
+
+    // Update dynamic descriptor set.
+    for index in 0..context.swapchain.num_of_images {
+      self.dynamic_descriptor_set.update_uniform_buffers(index, 0, &[self.object_uniform_buffer.as_ref()]);
+    }
+
     // Create texture descriptor set.
     let textures_descriptor_set = hala_gfx::HalaDescriptorSet::new_static(
       Rc::clone(&context.logical_device),
@@ -430,7 +465,15 @@ impl HalaRenderer {
         &[
           ( // All textures in the scene.
             0,
-            hala_gfx::HalaDescriptorType::COMBINED_IMAGE_SAMPLER,
+            hala_gfx::HalaDescriptorType::SAMPLED_IMAGE,
+            self.scene_in_gpu.as_ref().ok_or(HalaRendererError::new("The scene in GPU is none!", None))?
+              .textures.len() as u32,
+            hala_gfx::HalaShaderStageFlags::VERTEX | hala_gfx::HalaShaderStageFlags::FRAGMENT | hala_gfx::HalaShaderStageFlags::COMPUTE,
+            hala_gfx::HalaDescriptorBindingFlags::PARTIALLY_BOUND
+          ),
+          (
+            1,
+            hala_gfx::HalaDescriptorType::SAMPLER,
             self.scene_in_gpu.as_ref().ok_or(HalaRendererError::new("The scene in GPU is none!", None))?
               .textures.len() as u32,
             hala_gfx::HalaShaderStageFlags::VERTEX | hala_gfx::HalaShaderStageFlags::FRAGMENT | hala_gfx::HalaShaderStageFlags::COMPUTE,
@@ -447,18 +490,17 @@ impl HalaRenderer {
     let textures: &Vec<_> = self.scene_in_gpu.as_ref().ok_or(HalaRendererError::new("The scene in GPU is none!", None))?.textures.as_ref();
     let samplers: &Vec<_> = self.scene_in_gpu.as_ref().ok_or(HalaRendererError::new("The scene in GPU is none!", None))?.samplers.as_ref();
     let images: &Vec<_> = self.scene_in_gpu.as_ref().ok_or(HalaRendererError::new("The scene in GPU is none!", None))?.images.as_ref();
-    let mut combined_textures = Vec::new();
+    let mut final_images = Vec::new();
+    let mut final_samplers = Vec::new();
     for (sampler_index, image_index) in textures.iter().enumerate() {
-      let sampler = samplers.get(sampler_index).ok_or(HalaRendererError::new("The sampler is none!", None))?;
       let image = images.get(*image_index as usize).ok_or(HalaRendererError::new("The image is none!", None))?;
-      combined_textures.push((image, sampler));
+      let sampler = samplers.get(sampler_index).ok_or(HalaRendererError::new("The sampler is none!", None))?;
+      final_images.push(image);
+      final_samplers.push(sampler);
     }
-    if !combined_textures.is_empty() {
-      textures_descriptor_set.update_combined_image_samplers(
-        0,
-        0,
-        combined_textures.as_slice(),
-      );
+    if !final_images.is_empty() && !final_samplers.is_empty() {
+      textures_descriptor_set.update_sampled_images(0, 0, final_images.as_slice());
+      textures_descriptor_set.update_samplers(0, 1, final_samplers.as_slice());
     }
     self.textures_descriptor_set = Some(textures_descriptor_set);
 
@@ -477,12 +519,16 @@ impl HalaRenderer {
     };
 
     // Create traditional graphics pipelines.
+    let layouts = match self.textures_descriptor_set {
+      Some(ref textures_descriptor_set) => vec![&self.static_descriptor_set.layout, &self.dynamic_descriptor_set.layout, &textures_descriptor_set.layout],
+      None => vec![&self.static_descriptor_set.layout, &self.dynamic_descriptor_set.layout],
+    };
     for (i, (vertex_shader, fragment_shader)) in self.traditional_shaders.iter().enumerate() {
       self.pso.push(
         hala_gfx::HalaGraphicsPipeline::new(
           Rc::clone(&context.logical_device),
           &context.swapchain,
-          &[&self.static_descriptor_set.layout, &self.dynamic_descriptor_set.layout],
+          layouts.as_slice(),
           &[
             hala_gfx::HalaVertexInputAttributeDescription {
               binding: 0,
