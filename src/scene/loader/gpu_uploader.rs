@@ -445,17 +445,17 @@ impl HalaSceneGPUUploader {
         transform: glam::Mat4::IDENTITY,
         primitives,
       });
+    }
 
-      // Update the transform of the meshs.
-      for node in scene_in_cpu.nodes.iter() {
-        if node.mesh_index == u32::MAX {
-          continue;
-        }
-
-        let mesh_index = node.mesh_index as usize;
-        let mesh = &mut meshes[mesh_index];
-        mesh.transform = node.world_transform;
+    // Update the transform of the meshs.
+    for node in scene_in_cpu.nodes.iter() {
+      if node.mesh_index == u32::MAX {
+        continue;
       }
+
+      let mesh_index = node.mesh_index as usize;
+      let mesh = &mut meshes[mesh_index];
+      mesh.transform = node.world_transform;
     }
 
     let mut scene_in_gpu = gpu::HalaScene {
