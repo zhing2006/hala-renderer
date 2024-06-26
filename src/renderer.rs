@@ -47,6 +47,7 @@ pub struct HalaRenderer {
   pub name: String,
   pub width: u32,
   pub height: u32,
+  pub use_mesh_shader: bool,
 
   pub context: std::mem::ManuallyDrop<Rc<RefCell<HalaContext>>>,
 
@@ -70,6 +71,7 @@ pub struct HalaRenderer {
   pub(crate) scene_in_gpu: Option<gpu::HalaScene>,
 
   pub(crate) pso: Vec<hala_gfx::HalaGraphicsPipeline>,
+  pub(crate) textures_descriptor_set: Option<hala_gfx::HalaDescriptorSet>,
 
   // Render data.
   pub image_index: usize,
@@ -88,6 +90,7 @@ pub struct HalaRenderer {
 impl Drop for HalaRenderer {
 
   fn drop(&mut self) {
+    self.textures_descriptor_set = None;
     self.pso.clear();
 
     self.scene_in_gpu = None;
@@ -198,7 +201,7 @@ impl HalaRenderer {
             0,
             hala_gfx::HalaDescriptorType::UNIFORM_BUFFER,
             1,
-            hala_gfx::HalaShaderStageFlags::VERTEX | hala_gfx::HalaShaderStageFlags::FRAGMENT,
+            hala_gfx::HalaShaderStageFlags::VERTEX | hala_gfx::HalaShaderStageFlags::FRAGMENT | hala_gfx::HalaShaderStageFlags::COMPUTE,
             hala_gfx::HalaDescriptorBindingFlags::PARTIALLY_BOUND
           )
         ],
@@ -219,7 +222,7 @@ impl HalaRenderer {
             0,
             hala_gfx::HalaDescriptorType::UNIFORM_BUFFER,
             1,
-            hala_gfx::HalaShaderStageFlags::VERTEX | hala_gfx::HalaShaderStageFlags::FRAGMENT,
+            hala_gfx::HalaShaderStageFlags::VERTEX | hala_gfx::HalaShaderStageFlags::FRAGMENT | hala_gfx::HalaShaderStageFlags::COMPUTE,
             hala_gfx::HalaDescriptorBindingFlags::PARTIALLY_BOUND
           ),
         ],
@@ -254,6 +257,8 @@ impl HalaRenderer {
       name: name.to_string(),
       width,
       height,
+      use_mesh_shader: gpu_req.require_mesh_shader,
+
       context: std::mem::ManuallyDrop::new(Rc::new(RefCell::new(context))),
 
       graphics_command_buffers: std::mem::ManuallyDrop::new(graphics_command_buffers),
@@ -272,6 +277,7 @@ impl HalaRenderer {
       scene_in_gpu: None,
 
       pso: Vec::new(),
+      textures_descriptor_set: None,
 
       image_index: 0,
       is_device_lost: false,
@@ -403,6 +409,7 @@ impl HalaRenderer {
       &self.graphics_command_buffers,
       &self.transfer_command_buffers,
       scene_in_cpu,
+      self.use_mesh_shader,
     false)?;
 
     self.scene_in_gpu = Some(scene_in_gpu);
@@ -413,6 +420,47 @@ impl HalaRenderer {
   /// Commit all GPU resources.
   pub fn commit(&mut self) -> Result<(), HalaRendererError> {
     let context = self.context.borrow();
+
+    // Create texture descriptor set.
+    let textures_descriptor_set = hala_gfx::HalaDescriptorSet::new_static(
+      Rc::clone(&context.logical_device),
+      Rc::clone(&self.descriptor_pool),
+      hala_gfx::HalaDescriptorSetLayout::new(
+        Rc::clone(&context.logical_device),
+        &[
+          ( // All textures in the scene.
+            0,
+            hala_gfx::HalaDescriptorType::COMBINED_IMAGE_SAMPLER,
+            self.scene_in_gpu.as_ref().ok_or(HalaRendererError::new("The scene in GPU is none!", None))?
+              .textures.len() as u32,
+            hala_gfx::HalaShaderStageFlags::VERTEX | hala_gfx::HalaShaderStageFlags::FRAGMENT | hala_gfx::HalaShaderStageFlags::COMPUTE,
+            hala_gfx::HalaDescriptorBindingFlags::PARTIALLY_BOUND
+          ),
+        ],
+        "textures.descriptor_set_layout",
+      )?,
+      1,
+      0,
+      "textures.descriptor_set",
+    )?;
+
+    let textures: &Vec<_> = self.scene_in_gpu.as_ref().ok_or(HalaRendererError::new("The scene in GPU is none!", None))?.textures.as_ref();
+    let samplers: &Vec<_> = self.scene_in_gpu.as_ref().ok_or(HalaRendererError::new("The scene in GPU is none!", None))?.samplers.as_ref();
+    let images: &Vec<_> = self.scene_in_gpu.as_ref().ok_or(HalaRendererError::new("The scene in GPU is none!", None))?.images.as_ref();
+    let mut combined_textures = Vec::new();
+    for (sampler_index, image_index) in textures.iter().enumerate() {
+      let sampler = samplers.get(sampler_index).ok_or(HalaRendererError::new("The sampler is none!", None))?;
+      let image = images.get(*image_index as usize).ok_or(HalaRendererError::new("The image is none!", None))?;
+      combined_textures.push((image, sampler));
+    }
+    if !combined_textures.is_empty() {
+      textures_descriptor_set.update_combined_image_samplers(
+        0,
+        0,
+        combined_textures.as_slice(),
+      );
+    }
+    self.textures_descriptor_set = Some(textures_descriptor_set);
 
     // If we have cache file at ./out/pipeline_cache.bin, we can load it.
     let pipeline_cache = if std::path::Path::new("./out/pipeline_cache.bin").exists() {

@@ -45,6 +45,7 @@ impl HalaSceneGPUUploader {
   /// param graphics_command_buffers: The graphics command buffers.
   /// param transfer_command_buffers: The transfer command buffers.
   /// param scene_in_cpu: The scene in the CPU.
+  /// param use_for_mesh_shader: Whether the scene is used for mesh shader.
   /// param use_for_ray_tracing: Whether the scene is used for ray tracing.
   /// return: The scene in the GPU.
   pub fn upload(
@@ -52,6 +53,7 @@ impl HalaSceneGPUUploader {
     graphics_command_buffers: &HalaCommandBufferSet,
     transfer_command_buffers: &HalaCommandBufferSet,
     scene_in_cpu: &cpu::HalaScene,
+    use_for_mesh_shader: bool,
     use_for_ray_tracing: bool,
   ) -> Result<gpu::HalaScene, HalaRendererError> {
     // Calculate the buffer size.
@@ -349,7 +351,9 @@ impl HalaSceneGPUUploader {
           cpu::image_data::HalaImageDataType::ByteData(ref data) => {
             image.update_gpu_memory_with_buffer(
               data.as_slice(),
-              (if use_for_ray_tracing { hala_gfx::HalaPipelineStageFlags2::RAY_TRACING_SHADER } else { hala_gfx::HalaPipelineStageFlags2::default() })
+              (if use_for_mesh_shader { hala_gfx::HalaPipelineStageFlags2::TASK_SHADER_EXT | hala_gfx::HalaPipelineStageFlags2::MESH_SHADER_EXT } else { hala_gfx::HalaPipelineStageFlags2::default() })
+                | (if use_for_ray_tracing { hala_gfx::HalaPipelineStageFlags2::RAY_TRACING_SHADER } else { hala_gfx::HalaPipelineStageFlags2::default() })
+                | hala_gfx::HalaPipelineStageFlags2::VERTEX_SHADER | hala_gfx::HalaPipelineStageFlags2::FRAGMENT_SHADER
                 | hala_gfx::HalaPipelineStageFlags2::COMPUTE_SHADER
                 | hala_gfx::HalaPipelineStageFlags2::TRANSFER,
               &image_staging,
@@ -358,7 +362,8 @@ impl HalaSceneGPUUploader {
           cpu::image_data::HalaImageDataType::FloatData(ref data) => {
             image.update_gpu_memory_with_buffer(
               data.as_slice(),
-              (if use_for_ray_tracing { hala_gfx::HalaPipelineStageFlags2::RAY_TRACING_SHADER } else { hala_gfx::HalaPipelineStageFlags2::default() })
+              (if use_for_mesh_shader { hala_gfx::HalaPipelineStageFlags2::TASK_SHADER_EXT | hala_gfx::HalaPipelineStageFlags2::MESH_SHADER_EXT } else { hala_gfx::HalaPipelineStageFlags2::default() })
+                | (if use_for_ray_tracing { hala_gfx::HalaPipelineStageFlags2::RAY_TRACING_SHADER } else { hala_gfx::HalaPipelineStageFlags2::default() })
                 | hala_gfx::HalaPipelineStageFlags2::COMPUTE_SHADER
                 | hala_gfx::HalaPipelineStageFlags2::TRANSFER,
               &image_staging,

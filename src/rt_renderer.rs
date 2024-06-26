@@ -808,6 +808,7 @@ impl HalaRenderer {
       &self.graphics_command_buffers,
       &self.transfer_command_buffers,
       scene_in_cpu,
+      false,
       true)?;
     self.scene_in_gpu = Some(scene_in_gpu);
 
