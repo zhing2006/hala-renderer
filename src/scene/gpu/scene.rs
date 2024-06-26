@@ -9,6 +9,9 @@ use crate::scene::gpu::HalaMesh;
 
 /// The scene in the GPU.
 pub struct HalaScene {
+  pub camera_view_matrices: Vec<glam::Mat4>,
+  pub camera_proj_matrices: Vec<glam::Mat4>,
+
   pub cameras: HalaBuffer,
   pub lights: HalaBuffer,
   pub light_aabbs: HalaBuffer,

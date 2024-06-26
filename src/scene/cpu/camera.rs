@@ -25,3 +25,14 @@ pub enum HalaCamera {
   Perspective(HalaPerspectiveCamera),
   Orthographic(HalaOrthographicCamera),
 }
+
+impl HalaCamera {
+
+  pub fn get_proj_matrix(&self) -> Mat4 {
+    match self {
+      HalaCamera::Perspective(camera) => camera.projection,
+      HalaCamera::Orthographic(camera) => camera.orthography,
+    }
+  }
+
+}

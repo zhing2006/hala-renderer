@@ -16,6 +16,7 @@ pub struct HalaPrimitive {
 
 /// The mesh in the GPU.
 pub struct HalaMesh {
+  pub transform: glam::Mat4,
   pub primitives: Vec<HalaPrimitive>,
 }
 

@@ -89,6 +89,8 @@ impl HalaSceneGPUUploader {
         scene_in_cpu.cameras.len(), MAX_CAMERA_COUNT, MAX_CAMERA_COUNT
       );
     }
+    let mut camera_view_matrices = Vec::with_capacity(scene_in_cpu.cameras.len());
+    let mut camera_proj_matrices = Vec::with_capacity(scene_in_cpu.cameras.len());
     let mut cameras = Vec::with_capacity(scene_in_cpu.cameras.len());
     for (index, camera) in scene_in_cpu.cameras.iter().enumerate() {
       if index >= MAX_CAMERA_COUNT {
@@ -96,6 +98,8 @@ impl HalaSceneGPUUploader {
       }
       let camera_node = scene_in_cpu.nodes.iter().find(|&node| node.camera_index == index as u32)
         .ok_or(HalaRendererError::new(&format!("The camera node of the camera {} is not found.", index), None))?;
+      camera_view_matrices.push(camera_node.world_transform.inverse());
+      camera_proj_matrices.push(camera.get_proj_matrix());
       cameras.push(gpu::HalaCamera::new(camera_node, camera));
     }
     camera_buffer.update_gpu_memory_with_buffer_raw(
@@ -438,11 +442,25 @@ impl HalaSceneGPUUploader {
         });
       }
       meshes.push(gpu::HalaMesh {
+        transform: glam::Mat4::IDENTITY,
         primitives,
       });
+
+      // Update the transform of the meshs.
+      for node in scene_in_cpu.nodes.iter() {
+        if node.mesh_index == u32::MAX {
+          continue;
+        }
+
+        let mesh_index = node.mesh_index as usize;
+        let mesh = &mut meshes[mesh_index];
+        mesh.transform = node.world_transform;
+      }
     }
 
     let mut scene_in_gpu = gpu::HalaScene {
+      camera_view_matrices: camera_view_matrices,
+      camera_proj_matrices: camera_proj_matrices,
       cameras: camera_buffer,
       lights: light_buffer,
       light_aabbs: light_aabb_buffer,

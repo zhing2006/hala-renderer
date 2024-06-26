@@ -446,15 +446,25 @@ impl HalaRenderer {
   /// Commit all GPU resources.
   pub fn commit(&mut self) -> Result<(), HalaRendererError> {
     let context = self.context.borrow();
+    let scene = self.scene_in_gpu.as_ref().ok_or(HalaRendererError::new("The scene in GPU is none!", None))?;
+
+    // Assert camera count.
+    if scene.camera_view_matrices.is_empty() || scene.camera_proj_matrices.is_empty() {
+      return Err(HalaRendererError::new("There is no camera in the scene!", None));
+    }
+
+    // Update global uniform buffer(Only use No.1 camera).
+    self.global_uniform_buffer.update_memory(0, &[HalaGlobalUniform {
+      v_mtx: scene.camera_view_matrices[0],
+      p_mtx: scene.camera_proj_matrices[0],
+      vp_mtx: scene.camera_view_matrices[0] * scene.camera_proj_matrices[0],
+    }])?;
 
     // Update static descriptor set.
     self.static_descriptor_set.update_uniform_buffers(0, 0, &[self.global_uniform_buffer.as_ref()]);
-    self.static_descriptor_set.update_uniform_buffers(0, 1, &[
-      self.scene_in_gpu.as_ref().ok_or(HalaRendererError::new("The scene in GPU is none!", None))?.cameras.as_ref()]);
-    self.static_descriptor_set.update_uniform_buffers(0, 2, &[
-      self.scene_in_gpu.as_ref().ok_or(HalaRendererError::new("The scene in GPU is none!", None))?.lights.as_ref()]);
-    self.static_descriptor_set.update_storage_buffers(0, 3, &[
-      self.scene_in_gpu.as_ref().ok_or(HalaRendererError::new("The scene in GPU is none!", None))?.materials.as_ref()]);
+    self.static_descriptor_set.update_uniform_buffers(0, 1, &[scene.cameras.as_ref()]);
+    self.static_descriptor_set.update_uniform_buffers(0, 2, &[scene.lights.as_ref()]);
+    self.static_descriptor_set.update_storage_buffers(0, 3, &[scene.materials.as_ref()]);
 
     // Update dynamic descriptor set.
     for index in 0..context.swapchain.num_of_images {
@@ -471,7 +481,7 @@ impl HalaRenderer {
           ( // All textures in the scene.
             0,
             hala_gfx::HalaDescriptorType::SAMPLED_IMAGE,
-            self.scene_in_gpu.as_ref().ok_or(HalaRendererError::new("The scene in GPU is none!", None))?
+            scene
               .textures.len() as u32,
             hala_gfx::HalaShaderStageFlags::VERTEX | hala_gfx::HalaShaderStageFlags::FRAGMENT | hala_gfx::HalaShaderStageFlags::COMPUTE,
             hala_gfx::HalaDescriptorBindingFlags::PARTIALLY_BOUND
@@ -479,7 +489,7 @@ impl HalaRenderer {
           (
             1,
             hala_gfx::HalaDescriptorType::SAMPLER,
-            self.scene_in_gpu.as_ref().ok_or(HalaRendererError::new("The scene in GPU is none!", None))?
+            scene
               .textures.len() as u32,
             hala_gfx::HalaShaderStageFlags::VERTEX | hala_gfx::HalaShaderStageFlags::FRAGMENT | hala_gfx::HalaShaderStageFlags::COMPUTE,
             hala_gfx::HalaDescriptorBindingFlags::PARTIALLY_BOUND
@@ -492,9 +502,9 @@ impl HalaRenderer {
       "textures.descriptor_set",
     )?;
 
-    let textures: &Vec<_> = self.scene_in_gpu.as_ref().ok_or(HalaRendererError::new("The scene in GPU is none!", None))?.textures.as_ref();
-    let samplers: &Vec<_> = self.scene_in_gpu.as_ref().ok_or(HalaRendererError::new("The scene in GPU is none!", None))?.samplers.as_ref();
-    let images: &Vec<_> = self.scene_in_gpu.as_ref().ok_or(HalaRendererError::new("The scene in GPU is none!", None))?.images.as_ref();
+    let textures: &Vec<_> = scene.textures.as_ref();
+    let samplers: &Vec<_> = scene.samplers.as_ref();
+    let images: &Vec<_> = scene.images.as_ref();
     let mut final_images = Vec::new();
     let mut final_samplers = Vec::new();
     for (sampler_index, image_index) in textures.iter().enumerate() {
