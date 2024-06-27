@@ -53,6 +53,7 @@ pub struct HalaRenderer {
   pub context: std::mem::ManuallyDrop<Rc<RefCell<HalaContext>>>,
 
   pub(crate) graphics_command_buffers: std::mem::ManuallyDrop<hala_gfx::HalaCommandBufferSet>,
+  pub(crate) compute_command_buffers: std::mem::ManuallyDrop<hala_gfx::HalaCommandBufferSet>,
   pub(crate) transfer_command_buffers: std::mem::ManuallyDrop<hala_gfx::HalaCommandBufferSet>,
   pub(crate) transfer_staging_buffer: std::mem::ManuallyDrop<hala_gfx::HalaBuffer>,
 
@@ -108,6 +109,7 @@ impl Drop for HalaRenderer {
       std::mem::ManuallyDrop::drop(&mut self.descriptor_pool);
       std::mem::ManuallyDrop::drop(&mut self.transfer_staging_buffer);
       std::mem::ManuallyDrop::drop(&mut self.transfer_command_buffers);
+      std::mem::ManuallyDrop::drop(&mut self.compute_command_buffers);
       std::mem::ManuallyDrop::drop(&mut self.graphics_command_buffers);
       std::mem::ManuallyDrop::drop(&mut self.context);
     }
@@ -141,6 +143,14 @@ impl HalaRenderer {
       hala_gfx::HalaCommandBufferLevel::PRIMARY,
       context.swapchain.num_of_images,
       "main_graphics.cmd_buffer",
+    )?;
+    let compute_command_buffers = hala_gfx::HalaCommandBufferSet::new(
+      Rc::clone(&context.logical_device),
+      Rc::clone(&context.pools),
+      hala_gfx::HalaCommandBufferType::COMPUTE,
+      hala_gfx::HalaCommandBufferLevel::PRIMARY,
+      context.swapchain.num_of_images,
+      "main_compute.cmd_buffer",
     )?;
     let transfer_command_buffers = hala_gfx::HalaCommandBufferSet::new(
       Rc::clone(&context.logical_device),
@@ -253,6 +263,7 @@ impl HalaRenderer {
       context: std::mem::ManuallyDrop::new(Rc::new(RefCell::new(context))),
 
       graphics_command_buffers: std::mem::ManuallyDrop::new(graphics_command_buffers),
+      compute_command_buffers: std::mem::ManuallyDrop::new(compute_command_buffers),
       transfer_command_buffers: std::mem::ManuallyDrop::new(transfer_command_buffers),
       transfer_staging_buffer: std::mem::ManuallyDrop::new(transfer_staging_buffer),
       descriptor_pool: std::mem::ManuallyDrop::new(descriptor_pool),
