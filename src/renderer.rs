@@ -124,7 +124,6 @@ impl HalaRenderer {
   /// param gpu_req: The GPU requirements of the renderer.
   /// param window: The window of the renderer.
   /// return: The renderer.
-  #[allow(clippy::too_many_arguments)]
   pub fn new(
     name: &str,
     gpu_req: &HalaGPURequirements,

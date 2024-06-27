@@ -511,8 +511,7 @@ impl HalaGltfLoader {
         let zfar = perspective.zfar().unwrap_or(1000.0);
 
         // Use infinite reverse perspective projection(depth range: 1 to 0).
-        let mut projection = glam::Mat4::perspective_infinite_reverse_rh(yfov, aspect, znear);
-        projection.col_mut(1).y *= -1.0; // Flip the y axis for Vulkan.
+        let projection = glam::Mat4::perspective_infinite_reverse_rh(yfov, aspect, znear);
 
         let (focal_distance, aperture) =if let Some(extras) = camera.extras() {
           let custom_info: _CameraCustomInfo = serde_json::from_str(extras.get())
