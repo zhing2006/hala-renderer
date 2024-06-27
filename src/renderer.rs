@@ -58,9 +58,9 @@ pub struct HalaRenderer {
 
   pub(crate) descriptor_pool: std::mem::ManuallyDrop<Rc<RefCell<hala_gfx::HalaDescriptorPool>>>,
   pub(crate) static_descriptor_set: std::mem::ManuallyDrop<hala_gfx::HalaDescriptorSet>,
-  pub(crate) dynamic_descriptor_set: std::mem::ManuallyDrop<hala_gfx::HalaDescriptorSet>,
   pub(crate) global_uniform_buffer: std::mem::ManuallyDrop<hala_gfx::HalaBuffer>,
-  pub(crate) object_uniform_buffers: Vec<hala_gfx::HalaBuffer>,
+  pub(crate) dynamic_descriptor_set: Vec<hala_gfx::HalaDescriptorSet>,
+  pub(crate) object_uniform_buffers: Vec<Vec<hala_gfx::HalaBuffer>>,
 
   // Vertex Shader, Fragment Shader.
   pub(crate) traditional_shaders: Vec<(hala_gfx::HalaShader, hala_gfx::HalaShader)>,
@@ -101,9 +101,9 @@ impl Drop for HalaRenderer {
     self.compute_shaders.clear();
 
     self.object_uniform_buffers.clear();
+    self.dynamic_descriptor_set.clear();
     unsafe {
       std::mem::ManuallyDrop::drop(&mut self.global_uniform_buffer);
-      std::mem::ManuallyDrop::drop(&mut self.dynamic_descriptor_set);
       std::mem::ManuallyDrop::drop(&mut self.static_descriptor_set);
       std::mem::ManuallyDrop::drop(&mut self.descriptor_pool);
       std::mem::ManuallyDrop::drop(&mut self.transfer_staging_buffer);
@@ -167,12 +167,12 @@ impl HalaRenderer {
           8,
         ),
         (
-          hala_gfx::HalaDescriptorType::UNIFORM_BUFFER,
-          16,
-        ),
-        (
           hala_gfx::HalaDescriptorType::STORAGE_BUFFER,
           32,
+        ),
+        (
+          hala_gfx::HalaDescriptorType::UNIFORM_BUFFER,
+          256,
         ),
         (
           hala_gfx::HalaDescriptorType::SAMPLED_IMAGE,
@@ -233,27 +233,6 @@ impl HalaRenderer {
       "main_static.descriptor_set",
     )?;
 
-    let dynamic_descriptor_set = hala_gfx::HalaDescriptorSet::new(
-      Rc::clone(&context.logical_device),
-      Rc::clone(&descriptor_pool),
-      hala_gfx::HalaDescriptorSetLayout::new(
-        Rc::clone(&context.logical_device),
-        &[
-          ( // Object uniform buffer.
-            0,
-            hala_gfx::HalaDescriptorType::UNIFORM_BUFFER,
-            1,
-            hala_gfx::HalaShaderStageFlags::VERTEX | hala_gfx::HalaShaderStageFlags::FRAGMENT | hala_gfx::HalaShaderStageFlags::COMPUTE,
-            hala_gfx::HalaDescriptorBindingFlags::PARTIALLY_BOUND
-          ),
-        ],
-        "main_dynamic.descriptor_set_layout",
-      )?,
-      context.swapchain.num_of_images,
-      0,
-      "main_dynamic.descriptor_set",
-    )?;
-
     // Create global uniform buffer.
     let global_uniform_buffer = hala_gfx::HalaBuffer::new(
       Rc::clone(&context.logical_device),
@@ -262,19 +241,6 @@ impl HalaRenderer {
       hala_gfx::HalaMemoryLocation::CpuToGpu,
       "global.uniform_buffer",
     )?;
-
-    // Create object uniform buffer.
-    let mut object_uniform_buffers = Vec::new();
-    for index in 0..context.swapchain.num_of_images {
-      let object_uniform_buffer = hala_gfx::HalaBuffer::new(
-        Rc::clone(&context.logical_device),
-        std::mem::size_of::<HalaObjectUniform>() as u64,
-        hala_gfx::HalaBufferUsageFlags::UNIFORM_BUFFER,
-        hala_gfx::HalaMemoryLocation::CpuToGpu,
-        &format!("object_{}.uniform_buffer", index),
-      )?;
-      object_uniform_buffers.push(object_uniform_buffer);
-    }
 
     // Return the renderer.
     log::debug!("A HalaRenderer \"{}\"[{} x {}] is created.", name, width, height);
@@ -291,9 +257,9 @@ impl HalaRenderer {
       transfer_staging_buffer: std::mem::ManuallyDrop::new(transfer_staging_buffer),
       descriptor_pool: std::mem::ManuallyDrop::new(descriptor_pool),
       static_descriptor_set: std::mem::ManuallyDrop::new(static_descriptor_set),
-      dynamic_descriptor_set: std::mem::ManuallyDrop::new(dynamic_descriptor_set),
+      dynamic_descriptor_set: Vec::new(),
       global_uniform_buffer: std::mem::ManuallyDrop::new(global_uniform_buffer),
-      object_uniform_buffers: object_uniform_buffers,
+      object_uniform_buffers: Vec::new(),
 
       traditional_shaders: Vec::new(),
       shaders: Vec::new(),
@@ -459,16 +425,65 @@ impl HalaRenderer {
       vp_mtx: scene.camera_proj_matrices[0] * scene.camera_view_matrices[0],
     }])?;
 
+    for (mesh_index, mesh) in scene.meshes.iter().enumerate() {
+      // Prepare object data.
+      let mv_mtx = scene.camera_view_matrices[0] * mesh.transform;
+      let object_uniform = HalaObjectUniform {
+        m_mtx: mesh.transform,
+        i_m_mtx: mesh.transform.inverse(),
+        mv_mtx,
+        t_mv_mtx: mv_mtx.transpose(),
+        it_mv_mtx: mv_mtx.inverse().transpose(),
+        mvp_mtx: scene.camera_proj_matrices[0] * mv_mtx,
+      };
+
+      let descriptor_set = hala_gfx::HalaDescriptorSet::new(
+        Rc::clone(&context.logical_device),
+        Rc::clone(&self.descriptor_pool),
+        hala_gfx::HalaDescriptorSetLayout::new(
+          Rc::clone(&context.logical_device),
+          &[
+            ( // Object uniform buffer.
+              0,
+              hala_gfx::HalaDescriptorType::UNIFORM_BUFFER,
+              1,
+              hala_gfx::HalaShaderStageFlags::VERTEX | hala_gfx::HalaShaderStageFlags::FRAGMENT | hala_gfx::HalaShaderStageFlags::COMPUTE,
+              hala_gfx::HalaDescriptorBindingFlags::PARTIALLY_BOUND
+            ),
+          ],
+          &format!("main_dynamic_{}.descriptor_set_layout", mesh_index),
+        )?,
+        context.swapchain.num_of_images,
+        0,
+        &format!("main_dynamic_{}.descriptor_set", mesh_index),
+      )?;
+
+      // Create object uniform buffer.
+      let mut buffers = Vec::with_capacity(context.swapchain.num_of_images);
+      for index in 0..context.swapchain.num_of_images {
+        let buffer = hala_gfx::HalaBuffer::new(
+          Rc::clone(&context.logical_device),
+          std::mem::size_of::<HalaObjectUniform>() as u64,
+          hala_gfx::HalaBufferUsageFlags::UNIFORM_BUFFER,
+          hala_gfx::HalaMemoryLocation::CpuToGpu,
+          &format!("object_{}_{}.uniform_buffer", mesh_index, index),
+        )?;
+
+        buffer.update_memory(0, &[object_uniform])?;
+        descriptor_set.update_uniform_buffers(index, 0, &[buffer.as_ref()]);
+
+        buffers.push(buffer);
+      }
+
+      self.dynamic_descriptor_set.push(descriptor_set);
+      self.object_uniform_buffers.push(buffers);
+    }
+
     // Update static descriptor set.
     self.static_descriptor_set.update_uniform_buffers(0, 0, &[self.global_uniform_buffer.as_ref()]);
     self.static_descriptor_set.update_uniform_buffers(0, 1, &[scene.cameras.as_ref()]);
     self.static_descriptor_set.update_uniform_buffers(0, 2, &[scene.lights.as_ref()]);
     self.static_descriptor_set.update_storage_buffers(0, 3, &[scene.materials.as_ref()]);
-
-    // Update dynamic descriptor set.
-    for index in 0..context.swapchain.num_of_images {
-      self.dynamic_descriptor_set.update_uniform_buffers(index, 0, &[self.object_uniform_buffers[index].as_ref()]);
-    }
 
     // Create texture descriptor set.
     let textures_descriptor_set = hala_gfx::HalaDescriptorSet::new_static(
@@ -537,7 +552,7 @@ impl HalaRenderer {
         hala_gfx::HalaGraphicsPipeline::new(
           Rc::clone(&context.logical_device),
           &context.swapchain,
-          &[&self.static_descriptor_set.layout, &self.dynamic_descriptor_set.layout, &textures_descriptor_set.layout],
+          &[&self.static_descriptor_set.layout, &self.dynamic_descriptor_set[0].layout, &textures_descriptor_set.layout],
           &[
             hala_gfx::HalaVertexInputAttributeDescription {
               binding: 0,
@@ -683,18 +698,7 @@ impl HalaRenderer {
       |index, command_buffers| {
         // Render the scene.
         let scene = self.scene_in_gpu.as_ref().ok_or(hala_gfx::HalaGfxError::new("The scene in GPU is none!", None))?;
-        for mesh in scene.meshes.iter() {
-          let mv_mtx = scene.camera_view_matrices[0] * mesh.transform;
-          let object_uniform = HalaObjectUniform {
-            m_mtx: mesh.transform,
-            i_m_mtx: mesh.transform.inverse(),
-            mv_mtx,
-            t_mv_mtx: mv_mtx.transpose(),
-            it_mv_mtx: mv_mtx.inverse().transpose(),
-            mvp_mtx: scene.camera_proj_matrices[0] * mv_mtx,
-          };
-          self.object_uniform_buffers[index].update_memory(0, &[object_uniform])?;
-
+        for (mesh_index, mesh) in scene.meshes.iter().enumerate() {
           for primitive in mesh.primitives.iter() {
             // TODO: Only use default pipeline.
             command_buffers.bind_graphics_pipeline(index, &self.pso[0]);
@@ -706,9 +710,18 @@ impl HalaRenderer {
               0,
               &[
                 self.static_descriptor_set.as_ref(),
-                self.dynamic_descriptor_set.as_ref(),
+                self.dynamic_descriptor_set[mesh_index].as_ref(),
                 self.textures_descriptor_set.as_ref().ok_or(hala_gfx::HalaGfxError::new("The textures descriptor set is none!", None))?],
               &[],
+            );
+
+            // Push constants.
+            command_buffers.push_constants(
+              index,
+              &self.pso[0],
+              hala_gfx::HalaShaderStageFlags::VERTEX | hala_gfx::HalaShaderStageFlags::FRAGMENT,
+              0,
+              &primitive.material_index.to_le_bytes(),
             );
 
             // Bind vertex buffers.
@@ -724,15 +737,6 @@ impl HalaRenderer {
               &[primitive.index_buffer.as_ref()],
               &[0],
               hala_gfx::HalaIndexType::UINT32);
-
-            // Push constants.
-            command_buffers.push_constants_f32(
-              index,
-              &self.pso[0],
-              hala_gfx::HalaShaderStageFlags::VERTEX | hala_gfx::HalaShaderStageFlags::FRAGMENT,
-              0,
-              &[primitive.material_index as f32],
-            );
 
             // Draw.
             command_buffers.draw_indexed(
