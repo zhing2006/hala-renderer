@@ -380,8 +380,9 @@ impl HalaSceneGPUUploader {
 
     // Create the meshes.
     let mut meshes = Vec::with_capacity(scene_in_cpu.meshes.len());
+    let vertex_size = std::mem::size_of::<HalaVertex>();
     let max_vertex_buffer_size = scene_in_cpu.meshes.iter().map(
-      |mesh| mesh.primitives.iter().map(|prim| prim.vertices.len() * std::mem::size_of::<HalaVertex>()).max().unwrap_or(0)
+      |mesh| mesh.primitives.iter().map(|prim| prim.vertices.len() * vertex_size).max().unwrap_or(0)
     ).max().unwrap_or(0);
     let max_index_buffer_size = scene_in_cpu.meshes.iter().map(
       |mesh| mesh.primitives.iter().map(|prim| prim.indices.len() * std::mem::size_of::<u32>()).max().unwrap_or(0)

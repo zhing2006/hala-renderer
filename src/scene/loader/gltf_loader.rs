@@ -291,7 +291,7 @@ impl HalaGltfLoader {
           position: positions[i].into(),
           normal: normals[i].into(),
           tangent: tangents[i].into(),
-          tex_coord: tex_coords[i],
+          tex_coord: tex_coords[i].into(),
         });
       }
 
