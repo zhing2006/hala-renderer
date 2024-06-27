@@ -543,31 +543,31 @@ impl HalaRenderer {
               binding: 0,
               location: 0,
               offset: 0,
-              format: hala_gfx::HalaFormat::R32G32B32A32_SFLOAT, // Position.
+              format: hala_gfx::HalaFormat::R32G32B32_SFLOAT, // Position.
             },
             hala_gfx::HalaVertexInputAttributeDescription {
               binding: 0,
               location: 1,
-              offset: 16,
-              format: hala_gfx::HalaFormat::R32G32B32A32_SFLOAT, // Normal.
+              offset: 12,
+              format: hala_gfx::HalaFormat::R32G32B32_SFLOAT, // Normal.
             },
             hala_gfx::HalaVertexInputAttributeDescription {
               binding: 0,
               location: 2,
-              offset: 32,
-              format: hala_gfx::HalaFormat::R32G32B32A32_SFLOAT, // Tangent.
+              offset: 24,
+              format: hala_gfx::HalaFormat::R32G32B32_SFLOAT, // Tangent.
             },
             hala_gfx::HalaVertexInputAttributeDescription {
               binding: 0,
               location: 3,
-              offset: 48,
-              format: hala_gfx::HalaFormat::R32G32B32A32_SFLOAT,  // UV.
+              offset: 36,
+              format: hala_gfx::HalaFormat::R32G32_SFLOAT,  // UV.
             },
           ],
           &[
             hala_gfx::HalaVertexInputBindingDescription {
               binding: 0,
-              stride: 64,
+              stride: 44,
               input_rate: hala_gfx::HalaVertexInputRate::VERTEX,
             }
           ],
