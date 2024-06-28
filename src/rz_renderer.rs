@@ -367,14 +367,8 @@ impl HalaRendererTrait for HalaRenderer {
   fn update<F>(&mut self, _delta_time: f64, width: u32, height: u32, ui_fn: F) -> Result<(), HalaRendererError>
     where F: FnOnce(usize, &hala_gfx::HalaCommandBufferSet) -> Result<(), hala_gfx::HalaGfxError>
   {
-    self.check_and_restore_device(width, height)?;
+    self.pre_update(width, height)?;
     let context = self.resources.context.borrow();
-
-    // Statistic.
-    if self.statistics.total_frames > context.swapchain.num_of_images as u64 {
-      self.statistics.set_gpu_time(&context.get_gpu_frame_time()?);
-    }
-    self.statistics.inc_total_frames();
 
     // Update the renderer.
     self.data.image_index = context.prepare_frame()?;
