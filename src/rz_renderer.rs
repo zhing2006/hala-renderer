@@ -381,13 +381,18 @@ impl HalaRendererTrait for HalaRenderer {
         let scene = self.scene_in_gpu.as_ref().ok_or(hala_gfx::HalaGfxError::new("The scene in GPU is none!", None))?;
         for (mesh_index, mesh) in scene.meshes.iter().enumerate() {
           for primitive in mesh.primitives.iter() {
-            // TODO: Only use default pipeline.
-            command_buffers.bind_graphics_pipeline(index, &self.pso[0]);
+            let material_type = scene.material_types[primitive.material_index as usize] as usize;
+            if material_type >= scene.materials.len() {
+              return Err(hala_gfx::HalaGfxError::new("The material type index is out of range!", None));
+            }
+
+            // Use specific material type pipeline state object.
+            command_buffers.bind_graphics_pipeline(index, &self.pso[material_type]);
 
             // Bind descriptor sets.
             command_buffers.bind_graphics_descriptor_sets(
               index,
-              &self.pso[0],
+              &self.pso[material_type],
               0,
               &[
                 self.static_descriptor_set.as_ref(),
@@ -402,7 +407,7 @@ impl HalaRendererTrait for HalaRenderer {
             push_constants.extend_from_slice(&primitive.material_index.to_le_bytes());
             command_buffers.push_constants(
               index,
-              &self.pso[0],
+              &self.pso[material_type],
               hala_gfx::HalaShaderStageFlags::VERTEX | hala_gfx::HalaShaderStageFlags::FRAGMENT,
               0,
               push_constants.as_slice(),
