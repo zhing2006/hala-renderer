@@ -644,7 +644,7 @@ impl HalaSceneGPUUploader {
       let primitives_buffer = HalaBuffer::new(
         Rc::clone(&context.logical_device),
         primitives_buffer_size,
-        HalaBufferUsageFlags::STORAGE_BUFFER | HalaBufferUsageFlags::TRANSFER_DST,
+        HalaBufferUsageFlags::UNIFORM_BUFFER | HalaBufferUsageFlags::TRANSFER_DST,
         HalaMemoryLocation::GpuOnly,
         "scene.primitives_buffer",
       )?;

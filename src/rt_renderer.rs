@@ -1,18 +1,23 @@
 use std::rc::Rc;
-use std::cell::RefCell;
+
 use std::path::Path;
 use std::io::Write;
 
-use hala_gfx::{
-  HalaGPURequirements,
-  HalaContext,
-};
+use hala_gfx::HalaGPURequirements;
 
 use crate::error::HalaRendererError;
 use crate::scene::{
   cpu,
   gpu,
   loader,
+};
+
+use crate::renderer::{
+  HalaRendererInfo,
+  HalaRendererResources,
+  HalaRendererData,
+  HalaRendererStatistics,
+  HalaRendererTrait,
 };
 
 /// The type of the environment.
@@ -59,26 +64,520 @@ pub struct HalaGlobalUniform {
   pub num_of_lights: u32,
 }
 
+/// The implementation of the renderer trait.
+impl HalaRendererTrait for HalaRenderer {
+
+  fn info(&self) -> &HalaRendererInfo {
+    &self.info
+  }
+
+  fn info_mut(&mut self) -> &mut HalaRendererInfo {
+    &mut self.info
+  }
+
+  fn resources(&self) -> &HalaRendererResources {
+    &self.resources
+  }
+
+  fn resources_mut(&mut self) -> &mut HalaRendererResources {
+    &mut self.resources
+  }
+
+  fn data(&self) -> &HalaRendererData {
+    &self.data
+  }
+
+  fn data_mut(&mut self) -> &mut HalaRendererData {
+    &mut self.data
+  }
+
+  fn statistics(&self) -> &HalaRendererStatistics {
+    &self.statistics
+  }
+
+  fn statistics_mut(&mut self) -> &mut HalaRendererStatistics {
+    &mut self.statistics
+  }
+
+  fn get_descriptor_sizes() -> Vec<(hala_gfx::HalaDescriptorType, usize)> {
+    vec![
+      (
+        hala_gfx::HalaDescriptorType::ACCELERATION_STRUCTURE,
+        4,
+      ),
+      (
+        hala_gfx::HalaDescriptorType::STORAGE_IMAGE,
+        8,
+      ),
+      (
+        hala_gfx::HalaDescriptorType::UNIFORM_BUFFER,
+        256,
+      ),
+      (
+        hala_gfx::HalaDescriptorType::STORAGE_BUFFER,
+        32,
+      ),
+      (
+        hala_gfx::HalaDescriptorType::SAMPLED_IMAGE,
+        64,
+      ),
+      (
+        hala_gfx::HalaDescriptorType::SAMPLER,
+        16,
+      ),
+      (
+        hala_gfx::HalaDescriptorType::COMBINED_IMAGE_SAMPLER,
+        256,
+      ),
+    ]
+  }
+
+  /// Commit all GPU resources.
+  fn commit(&mut self) -> Result<(), HalaRendererError> {
+    let context = self.resources.context.borrow();
+    let scene = self.scene_in_gpu.as_ref().ok_or(HalaRendererError::new("The scene in GPU is none!", None))?;
+
+    // Create dynamic descriptor set.
+    let dynamic_descriptor_set = hala_gfx::HalaDescriptorSet::new(
+      Rc::clone(&context.logical_device),
+      Rc::clone(&self.resources.descriptor_pool),
+      hala_gfx::HalaDescriptorSetLayout::new(
+        Rc::clone(&context.logical_device),
+        &[
+          ( // Main uniform buffer.
+            0,
+            hala_gfx::HalaDescriptorType::UNIFORM_BUFFER,
+            1,
+            hala_gfx::HalaShaderStageFlags::RAYGEN | hala_gfx::HalaShaderStageFlags::CLOSEST_HIT | hala_gfx::HalaShaderStageFlags::CALLABLE,
+            hala_gfx::HalaDescriptorBindingFlags::PARTIALLY_BOUND
+          ),
+          ( // Camera uniform buffer.
+            1,
+            hala_gfx::HalaDescriptorType::UNIFORM_BUFFER,
+            1,
+            hala_gfx::HalaShaderStageFlags::RAYGEN | hala_gfx::HalaShaderStageFlags::CALLABLE,
+            hala_gfx::HalaDescriptorBindingFlags::PARTIALLY_BOUND
+          ),
+          ( // Light uniform buffer.
+            2,
+            hala_gfx::HalaDescriptorType::UNIFORM_BUFFER,
+            1,
+            hala_gfx::HalaShaderStageFlags::RAYGEN | hala_gfx::HalaShaderStageFlags::INTERSECTION | hala_gfx::HalaShaderStageFlags::CALLABLE,
+            hala_gfx::HalaDescriptorBindingFlags::PARTIALLY_BOUND
+          ),
+          ( // Material uniform buffer.
+            3,
+            hala_gfx::HalaDescriptorType::UNIFORM_BUFFER,
+            scene.materials.len() as u32,
+            hala_gfx::HalaShaderStageFlags::RAYGEN | hala_gfx::HalaShaderStageFlags::CALLABLE,
+            hala_gfx::HalaDescriptorBindingFlags::PARTIALLY_BOUND
+          ),
+          ( // Primitive uniform buffer.
+            4,
+            hala_gfx::HalaDescriptorType::UNIFORM_BUFFER,
+            scene.primitives.len() as u32,
+            hala_gfx::HalaShaderStageFlags::RAYGEN | hala_gfx::HalaShaderStageFlags::CLOSEST_HIT,
+            hala_gfx::HalaDescriptorBindingFlags::PARTIALLY_BOUND
+          ),
+        ],
+        "main_dynamic.descriptor_set_layout",
+      )?,
+      context.swapchain.num_of_images,
+      0,
+      "main_dynamic.descriptor_set",
+    )?;
+
+    // Create texture descriptor set.
+    let textures_descriptor_set = hala_gfx::HalaDescriptorSet::new_static(
+      Rc::clone(&context.logical_device),
+      Rc::clone(&self.resources.descriptor_pool),
+      hala_gfx::HalaDescriptorSetLayout::new(
+        Rc::clone(&context.logical_device),
+        &[
+          ( // All textures in the scene.
+            0,
+            hala_gfx::HalaDescriptorType::COMBINED_IMAGE_SAMPLER,
+            scene.textures.len() as u32,
+            hala_gfx::HalaShaderStageFlags::RAYGEN | hala_gfx::HalaShaderStageFlags::CALLABLE,
+            hala_gfx::HalaDescriptorBindingFlags::PARTIALLY_BOUND
+          ),
+        ],
+        "textures.descriptor_set_layout",
+      )?,
+      1,
+      0,
+      "textures.descriptor_set",
+    )?;
+
+    let textures: &Vec<_> = scene.textures.as_ref();
+    let samplers: &Vec<_> = scene.samplers.as_ref();
+    let images: &Vec<_> = scene.images.as_ref();
+    let mut combined_textures = Vec::new();
+    for (sampler_index, image_index) in textures.iter().enumerate() {
+      let sampler = samplers.get(sampler_index).ok_or(HalaRendererError::new("The sampler is none!", None))?;
+      let image = images.get(*image_index as usize).ok_or(HalaRendererError::new("The image is none!", None))?;
+      combined_textures.push((image, sampler));
+    }
+    if !combined_textures.is_empty() {
+      textures_descriptor_set.update_combined_image_samplers(
+        0,
+        0,
+        combined_textures.as_slice(),
+      );
+    }
+
+    // If we have cache file at ./out/pipeline_cache.bin, we can load it.
+    let pipeline_cache = if std::path::Path::new("./out/pipeline_cache.bin").exists() {
+      log::debug!("Load pipeline cache from file: ./out/pipeline_cache.bin");
+      hala_gfx::HalaPipelineCache::with_cache_file(
+        Rc::clone(&context.logical_device),
+        "./out/pipeline_cache.bin",
+      )?
+    } else {
+      log::debug!("Create a new pipeline cache.");
+      hala_gfx::HalaPipelineCache::new(
+        Rc::clone(&context.logical_device),
+      )?
+    };
+
+    // Create pipeline.
+    let pipeline = hala_gfx::HalaRayTracingPipeline::new(
+      Rc::clone(&context.logical_device),
+      &[&self.static_descriptor_set.layout, &dynamic_descriptor_set.layout, &textures_descriptor_set.layout],
+      self.raygen_shaders.as_slice(),
+      self.miss_shaders.as_slice(),
+      self.hit_shaders.as_slice(),
+      self.callable_shaders.as_slice(),
+      2,
+      Some(&pipeline_cache),
+      false,
+      "main.pipeline",
+    )?;
+
+    // Save pipeline cache.
+    pipeline_cache.save("./out/pipeline_cache.bin")?;
+
+    // Create shader binding table.
+    let sbt = hala_gfx::HalaShaderBindingTable::new(
+      Rc::clone(&context.logical_device),
+      self.raygen_shaders.as_slice(),
+      self.miss_shaders.as_slice(),
+      self.hit_shaders.as_slice(),
+      self.callable_shaders.as_slice(),
+      &pipeline,
+      &self.resources.transfer_staging_buffer,
+      &self.resources.transfer_command_buffers,
+      "main.sbt",
+    )?;
+
+    self.textures_descriptor_set = Some(textures_descriptor_set);
+    self.pipeline = Some(pipeline);
+    self.sbt = Some(sbt);
+
+    // Update static descriptor set.
+    let mut static_binding_index = 0;
+    self.static_descriptor_set.update_acceleration_structures(
+      0,
+      static_binding_index,
+      &[
+        scene
+          .tplas.as_ref().ok_or(HalaRendererError::new("The top level acceleration structure is none!", None))?
+      ],
+    );
+    static_binding_index += 1;
+
+    self.final_image_binding_index = static_binding_index;
+    self.static_descriptor_set.update_storage_images(
+      0,
+      self.final_image_binding_index,
+      std::slice::from_ref(self.final_image.as_ref()),
+    );
+    static_binding_index += 1;
+
+    self.accum_image_binding_index = static_binding_index;
+    self.static_descriptor_set.update_storage_images(
+      0,
+      self.accum_image_binding_index,
+      std::slice::from_ref(&self.accum_image.as_ref()),
+    );
+    static_binding_index += 1;
+    self.albedo_image_binding_index = static_binding_index;
+    self.static_descriptor_set.update_storage_images(
+      0,
+      self.albedo_image_binding_index,
+      std::slice::from_ref(&self.albedo_image.as_ref()),
+    );
+    static_binding_index += 1;
+    self.normal_image_binding_index = static_binding_index;
+    self.static_descriptor_set.update_storage_images(
+      0,
+      self.normal_image_binding_index,
+      std::slice::from_ref(&self.normal_image.as_ref()),
+    );
+    static_binding_index += 1;
+
+    let blue_noise_image = self.blue_noise_image.as_ref().ok_or(HalaRendererError::new("The blue noise image is none!", None))?;
+    self.static_descriptor_set.update_sampled_images(
+      0,
+      static_binding_index,
+      std::slice::from_ref(blue_noise_image),
+    );
+    static_binding_index += 1;
+
+    if let Some(envmap) = self.envmap.as_ref() {
+      self.static_descriptor_set.update_combined_image_samplers(
+        0,
+        static_binding_index,
+        &[(&envmap.image, &envmap.sampler)],
+      );
+      static_binding_index += 1;
+      self.static_descriptor_set.update_sampled_images(
+        0,
+        static_binding_index,
+        &[&envmap.marginal_distribution_image, &envmap.conditional_distribution_image],
+      );
+      static_binding_index += 1;
+      self.static_descriptor_set.update_samplers(
+        0,
+        static_binding_index,
+        &[&envmap.distribution_sampler],
+      );
+      // static_binding_index += 1;
+    }
+
+    // Update dynamic descriptor set.
+    for index in 0..context.swapchain.num_of_images {
+      dynamic_descriptor_set.update_uniform_buffers(
+        index,
+        0,
+        &[self.global_uniform_buffer.as_ref()],
+      );
+      dynamic_descriptor_set.update_uniform_buffers(
+        index,
+        1,
+        &[&scene.cameras],
+      );
+      dynamic_descriptor_set.update_uniform_buffers(
+        index,
+        2,
+        &[&scene.lights],
+      );
+      dynamic_descriptor_set.update_uniform_buffers(
+        index,
+        3,
+        scene.materials.as_slice(),
+      );
+      dynamic_descriptor_set.update_uniform_buffers(
+        index,
+        4,
+        scene.primitives.as_slice(),
+      );
+    }
+    self.dynamic_descriptor_set = Some(dynamic_descriptor_set);
+
+    Ok(())
+  }
+
+  /// Update the renderer.
+  /// param delta_time: The delta time.
+  /// param width: The width of the window.
+  /// param height: The height of the window.
+  /// param ui_fn: The draw UI function.
+  /// return: The result.
+  fn update<F>(&mut self, _delta_time: f64, width: u32, height: u32, ui_fn: F) -> Result<(), HalaRendererError>
+    where F: FnOnce(usize, &hala_gfx::HalaCommandBufferSet) -> Result<(), hala_gfx::HalaGfxError>
+  {
+    self.pre_update(width, height)?;
+    let context = self.resources.context.borrow();
+
+    // Skip the update if the total frames is greater than the max frames.
+    if self.statistics.total_frames > self.max_frames {
+      return Ok(());
+    }
+
+    // Update global uniform buffer.
+    let (use_hdri, env_total_sum, env_map_width, env_map_height) = match self.envmap.as_ref() {
+      Some(envmap) => (true, envmap.total_luminance, envmap.image.extent.width, envmap.image.extent.height),
+      None => (false, 0f32, 0, 0),
+    };
+    let num_of_lights = if let Some(scene_in_gpu) = self.scene_in_gpu.as_ref() {
+      scene_in_gpu.light_data.len() as u32
+    } else {
+      0
+    };
+    self.global_uniform_buffer.update_memory(0, &[HalaGlobalUniform {
+      ground_color: self.env_ground_color,
+      sky_color: self.env_sky_color,
+      resolution: glam::Vec2::new(self.info.width as f32, self.info.height as f32),
+      max_depth: self.max_depth,
+      rr_depth: self.rr_depth,
+      frame_index: (self.statistics.total_frames - 1) as u32,
+      camera_index: 0,
+      env_type: if use_hdri { HalaEnvType::MAP.to_u8() as u32 } else { HalaEnvType::SKY.to_u8() as u32 },
+      env_map_width,
+      env_map_height,
+      env_total_sum,
+      env_rotation: self.env_rotation / 360f32,
+      env_intensity: self.env_intensity,
+      exposure_value: self.exposure_value,
+      enable_tonemap: self.enable_tonemap as u32,
+      enable_aces: self.enable_aces as u32,
+      use_simple_aces: self.use_simple_aces as u32,
+      num_of_lights,
+    }])?;
+
+    // Update the renderer.
+    self.data.image_index = context.prepare_frame()?;
+    context.record_graphics_command_buffer(
+      self.data.image_index,
+      &self.resources.graphics_command_buffers,
+      None,
+      |index, command_buffers| {
+        ui_fn(index, command_buffers)?;
+
+        Ok(())
+      },
+      Some(&self.final_image),
+      |index, command_buffers| {
+        let _pipline = self.pipeline.as_ref().ok_or(hala_gfx::HalaGfxError::new("The pipeline is none!", None))?;
+        let _sbt = self.sbt.as_ref().ok_or(hala_gfx::HalaGfxError::new("The shader binding table is none!", None))?;
+
+        command_buffers.bind_ray_tracing_pipeline(index, _pipline);
+        command_buffers.bind_ray_tracing_descriptor_sets(
+          index,
+          _pipline,
+          0,
+          &[
+            self.static_descriptor_set.as_ref(),
+            self.dynamic_descriptor_set.as_ref().ok_or(hala_gfx::HalaGfxError::new("The dynamic descriptor set is none!", None))?,
+            self.textures_descriptor_set.as_ref().ok_or(hala_gfx::HalaGfxError::new("The textures descriptor set is none!", None))?,
+          ],
+          &[],
+        );
+        command_buffers.trace_rays(
+          index,
+          _sbt,
+          self.info.width,
+          self.info.height,
+          1,
+        );
+
+        Ok(true)
+      },
+    )?;
+
+    Ok(())
+  }
+
+  /// Render the renderer.
+  /// return: The result.
+  fn render(&mut self) -> Result<(), HalaRendererError> {
+    let mut context = self.resources.context.borrow_mut();
+
+    // Skip the rendering and wait to reset the device on the next frame update.
+    if self.data.is_device_lost {
+      return Ok(());
+    }
+
+    // Skip the update if the total frames is greater than the max frames.
+    if self.statistics.total_frames > self.max_frames {
+      return Ok(());
+    }
+
+    // Render the renderer.
+    match context.submit_and_present_frame(self.data.image_index, &self.resources.graphics_command_buffers) {
+      Ok(_) => (),
+      Err(err) => {
+        if err.is_device_lost() {
+          log::warn!("The device is lost!");
+          self.data.is_device_lost = true;
+        } else {
+          return Err(err.into());
+        }
+      }
+    }
+
+    Ok(())
+  }
+
+  /// Check and restore the device.
+  /// param width: The width of the swapchain.
+  /// param height: The height of the swapchain.
+  /// return: The result.
+  fn check_and_restore_device(&mut self, width: u32, height: u32) -> Result<(), HalaRendererError> {
+    let mut context = self.resources.context.borrow_mut();
+
+    if self.data.is_device_lost {
+      context.reset_swapchain(width, height)?;
+
+      self.info.width = width;
+      self.info.height = height;
+      unsafe {
+        std::mem::ManuallyDrop::drop(&mut self.host_accessible_buffer);
+        std::mem::ManuallyDrop::drop(&mut self.normal_image);
+        std::mem::ManuallyDrop::drop(&mut self.albedo_image);
+        std::mem::ManuallyDrop::drop(&mut self.accum_image);
+        std::mem::ManuallyDrop::drop(&mut self.final_image);
+      }
+      let (
+        final_image,
+        accum_image,
+        albedo_image,
+        normal_image,
+        host_accessible_buffer,
+      ) = Self::create_storage_images(&context)?;
+      self.final_image = std::mem::ManuallyDrop::new(final_image);
+      self.accum_image = std::mem::ManuallyDrop::new(accum_image);
+      self.albedo_image = std::mem::ManuallyDrop::new(albedo_image);
+      self.normal_image = std::mem::ManuallyDrop::new(normal_image);
+      self.host_accessible_buffer = std::mem::ManuallyDrop::new(host_accessible_buffer);
+
+      self.static_descriptor_set.update_storage_images(
+        0,
+        self.final_image_binding_index,
+        std::slice::from_ref(self.final_image.as_ref()),
+      );
+      self.static_descriptor_set.update_storage_images(
+        0,
+        self.accum_image_binding_index,
+        std::slice::from_ref(&self.accum_image.as_ref()),
+      );
+      self.static_descriptor_set.update_storage_images(
+        0,
+        self.albedo_image_binding_index,
+        std::slice::from_ref(&self.albedo_image.as_ref()),
+      );
+      self.static_descriptor_set.update_storage_images(
+        0,
+        self.normal_image_binding_index,
+        std::slice::from_ref(&self.normal_image.as_ref()),
+      );
+
+      self.statistics.reset();
+
+      self.data.is_device_lost = false;
+    }
+
+    Ok(())
+  }
+
+}
+
 /// The ray tracing renderer.
 pub struct HalaRenderer {
-  pub name: String,
-  pub width: u32,
-  pub height: u32,
-  pub max_depth: u32,
-  pub rr_depth: u32,
-  pub exposure_value: f32,
-  pub enable_tonemap: bool,
-  pub enable_aces: bool,
-  pub use_simple_aces: bool,
-  pub max_frames: u64,
 
-  pub context: std::mem::ManuallyDrop<Rc<RefCell<HalaContext>>>,
+  pub(crate) info: HalaRendererInfo,
 
-  pub(crate) graphics_command_buffers: std::mem::ManuallyDrop<hala_gfx::HalaCommandBufferSet>,
-  pub(crate) transfer_command_buffers: std::mem::ManuallyDrop<hala_gfx::HalaCommandBufferSet>,
-  pub(crate) transfer_staging_buffer: std::mem::ManuallyDrop<hala_gfx::HalaBuffer>,
+  pub(crate) max_depth: u32,
+  pub(crate) rr_depth: u32,
+  pub(crate) exposure_value: f32,
+  pub(crate) enable_tonemap: bool,
+  pub(crate) enable_aces: bool,
+  pub(crate) use_simple_aces: bool,
+  pub(crate) max_frames: u64,
 
-  pub(crate) descriptor_pool: std::mem::ManuallyDrop<Rc<RefCell<hala_gfx::HalaDescriptorPool>>>,
+  pub(crate) resources: std::mem::ManuallyDrop<HalaRendererResources>,
+
   pub(crate) static_descriptor_set: std::mem::ManuallyDrop<hala_gfx::HalaDescriptorSet>,
   pub(crate) dynamic_descriptor_set: Option<hala_gfx::HalaDescriptorSet>,
   pub(crate) global_uniform_buffer: std::mem::ManuallyDrop<hala_gfx::HalaBuffer>,
@@ -111,16 +610,9 @@ pub struct HalaRenderer {
 
   pub(crate) host_accessible_buffer: std::mem::ManuallyDrop<hala_gfx::HalaBuffer>,
 
-  // Render data.
-  image_index: usize,
-  is_device_lost: bool,
+  pub(crate) data: HalaRendererData,
+  pub(crate) statistics: HalaRendererStatistics,
 
-  // Statistic.
-  total_frames: u64,
-  last_stat_time: std::time::Instant,
-  elapsed_time: std::time::Duration,
-  total_gpu_nanoseconds: u128,
-  total_gpu_frames: u64,
 }
 
 /// The Drop implementation of the renderer.
@@ -146,13 +638,9 @@ impl Drop for HalaRenderer {
       std::mem::ManuallyDrop::drop(&mut self.final_image);
       std::mem::ManuallyDrop::drop(&mut self.global_uniform_buffer);
       std::mem::ManuallyDrop::drop(&mut self.static_descriptor_set);
-      std::mem::ManuallyDrop::drop(&mut self.descriptor_pool);
-      std::mem::ManuallyDrop::drop(&mut self.transfer_staging_buffer);
-      std::mem::ManuallyDrop::drop(&mut self.transfer_command_buffers);
-      std::mem::ManuallyDrop::drop(&mut self.graphics_command_buffers);
-      std::mem::ManuallyDrop::drop(&mut self.context);
+      std::mem::ManuallyDrop::drop(&mut self.resources);
     }
-    log::debug!("A HalaRenderer \"{}\" is dropped.", self.name);
+    log::debug!("A HalaRenderer \"{}\" is dropped.", self.info().name);
   }
 
 }
@@ -183,77 +671,21 @@ impl HalaRenderer {
     use_simple_aces: bool,
     max_frames: u64,
   ) -> Result<Self, HalaRendererError> {
-    let context = HalaContext::new(name, gpu_req, window)?;
     let width = gpu_req.width;
     let height = gpu_req.height;
 
-    // Craete command buffers.
-    let graphics_command_buffers = hala_gfx::HalaCommandBufferSet::new(
-      Rc::clone(&context.logical_device),
-      Rc::clone(&context.pools),
-      hala_gfx::HalaCommandBufferType::GRAPHICS,
-      hala_gfx::HalaCommandBufferLevel::PRIMARY,
-      context.swapchain.num_of_images,
-      "main_graphics.cmd_buffer",
+    let resources = HalaRendererResources::new(
+      name,
+      gpu_req,
+      window,
+      &Self::get_descriptor_sizes(),
     )?;
-    let transfer_command_buffers = hala_gfx::HalaCommandBufferSet::new(
-      Rc::clone(&context.logical_device),
-      Rc::clone(&context.pools),
-      hala_gfx::HalaCommandBufferType::TRANSFER,
-      hala_gfx::HalaCommandBufferLevel::PRIMARY,
-      context.swapchain.num_of_images,
-      "main_transfer.cmd_buffer",
-    )?;
-    let transfer_staging_buffer = hala_gfx::HalaBuffer::new(
-      Rc::clone(&context.logical_device),
-      256 * 1024 * 1024, // 4096 * 4096 * RGBA32F = 256MB
-      hala_gfx::HalaBufferUsageFlags::TRANSFER_SRC,
-      hala_gfx::HalaMemoryLocation::CpuToGpu,
-      "transfer_staging.buffer",
-    )?;
-
-    // Create descriptors.
-    let descriptor_pool = Rc::new(RefCell::new(hala_gfx::HalaDescriptorPool::new(
-      Rc::clone(&context.logical_device),
-      &[
-        (
-          hala_gfx::HalaDescriptorType::ACCELERATION_STRUCTURE,
-          4,
-        ),
-        (
-          hala_gfx::HalaDescriptorType::STORAGE_IMAGE,
-          8,
-        ),
-        (
-          hala_gfx::HalaDescriptorType::UNIFORM_BUFFER,
-          256,
-        ),
-        (
-          hala_gfx::HalaDescriptorType::STORAGE_BUFFER,
-          32,
-        ),
-        (
-          hala_gfx::HalaDescriptorType::SAMPLED_IMAGE,
-          64,
-        ),
-        (
-          hala_gfx::HalaDescriptorType::SAMPLER,
-          16,
-        ),
-        (
-          hala_gfx::HalaDescriptorType::COMBINED_IMAGE_SAMPLER,
-          256,
-        ),
-      ],
-      512,
-      "main.descriptor_pool"
-    )?));
 
     let static_descriptor_set = hala_gfx::HalaDescriptorSet::new_static(
-      Rc::clone(&context.logical_device),
-      Rc::clone(&descriptor_pool),
+      Rc::clone(&resources.context.borrow().logical_device),
+      Rc::clone(&resources.descriptor_pool),
       hala_gfx::HalaDescriptorSetLayout::new(
-        Rc::clone(&context.logical_device),
+        Rc::clone(&resources.context.borrow().logical_device),
         &[
           ( // Acceleration structure.
             0,
@@ -328,7 +760,7 @@ impl HalaRenderer {
 
     // Create global uniform buffer.
     let uniform_buffer = hala_gfx::HalaBuffer::new(
-      Rc::clone(&context.logical_device),
+      Rc::clone(&resources.context.borrow().logical_device),
       std::mem::size_of::<HalaGlobalUniform>() as u64,
       hala_gfx::HalaBufferUsageFlags::UNIFORM_BUFFER,
       hala_gfx::HalaMemoryLocation::CpuToGpu,
@@ -342,14 +774,12 @@ impl HalaRenderer {
       albedo_image,
       normal_image,
       host_accessible_buffer,
-    ) = Self::create_storage_images(&context)?;
+    ) = Self::create_storage_images(&resources.context.borrow())?;
 
     // Return the renderer.
     log::debug!("A HalaRenderer \"{}\"[{} x {}] is created.", name, width, height);
     Ok(Self {
-      name: name.to_string(),
-      width,
-      height,
+      info: HalaRendererInfo::new(name, width, height),
       max_depth,
       rr_depth,
       enable_tonemap,
@@ -357,11 +787,8 @@ impl HalaRenderer {
       use_simple_aces,
       max_frames: if max_frames == 0 { std::u64::MAX } else { max_frames },
 
-      context: std::mem::ManuallyDrop::new(Rc::new(RefCell::new(context))),
-      graphics_command_buffers: std::mem::ManuallyDrop::new(graphics_command_buffers),
-      transfer_command_buffers: std::mem::ManuallyDrop::new(transfer_command_buffers),
-      transfer_staging_buffer: std::mem::ManuallyDrop::new(transfer_staging_buffer),
-      descriptor_pool: std::mem::ManuallyDrop::new(descriptor_pool),
+      resources: std::mem::ManuallyDrop::new(resources),
+
       static_descriptor_set: std::mem::ManuallyDrop::new(static_descriptor_set),
       dynamic_descriptor_set: None,
       global_uniform_buffer: std::mem::ManuallyDrop::new(uniform_buffer),
@@ -393,14 +820,9 @@ impl HalaRenderer {
 
       host_accessible_buffer: std::mem::ManuallyDrop::new(host_accessible_buffer),
 
-      image_index: 0,
-      is_device_lost: false,
+      data: HalaRendererData::new(),
 
-      total_frames: 0,
-      last_stat_time: std::time::Instant::now(),
-      elapsed_time: std::time::Duration::from_secs(0),
-      total_gpu_nanoseconds: 0,
-      total_gpu_frames: 0,
+      statistics: HalaRendererStatistics::new(),
     })
   }
 
@@ -521,7 +943,7 @@ impl HalaRenderer {
     rt_group_type: hala_gfx::HalaRayTracingShaderGroupType,
     debug_name: &str) -> Result<(), HalaRendererError>
   {
-    let context = self.context.borrow();
+    let context = self.resources.context.borrow();
     let shader = hala_gfx::HalaShader::new(
       Rc::clone(&context.logical_device),
       code,
@@ -560,7 +982,7 @@ impl HalaRenderer {
     rt_group_type: hala_gfx::HalaRayTracingShaderGroupType,
     debug_name: &str) -> Result<(), HalaRendererError>
   {
-    let context = self.context.borrow();
+    let context = self.resources.context.borrow();
     let shader = hala_gfx::HalaShader::with_file(
       Rc::clone(&context.logical_device),
       file_path,
@@ -599,7 +1021,7 @@ impl HalaRenderer {
     intersection_code: Option<&[u8]>,
     debug_name: &str) -> Result<(), HalaRendererError>
   {
-    let context = self.context.borrow();
+    let context = self.resources.context.borrow();
     let closest_shader = match closest_code {
       Some(code) => Some(hala_gfx::HalaShader::new(
         Rc::clone(&context.logical_device),
@@ -655,7 +1077,7 @@ impl HalaRenderer {
     intersection_file_path: Option<&str>,
     debug_name: &str) -> Result<(), HalaRendererError>
   {
-    let context = self.context.borrow();
+    let context = self.resources.context.borrow();
     // closest_file_path, any_file_path and intersection_file_path can not be all none.
     if closest_file_path.is_none() && any_file_path.is_none() && intersection_file_path.is_none() {
       return Err(HalaRendererError::new("All hit shaders are none!", None));
@@ -707,7 +1129,7 @@ impl HalaRenderer {
   /// param path: The path of the blue noise texture.
   /// return: The result.
   pub fn load_blue_noise_texture<P: AsRef<Path>>(&mut self, path: P) -> Result<(), HalaRendererError> {
-    let context = self.context.borrow();
+    let context = self.resources.context.borrow();
     let path = path.as_ref();
     let file_name = path.file_stem().ok_or(HalaRendererError::new("The file name is none!", None))?;
 
@@ -738,8 +1160,8 @@ impl HalaRenderer {
     image.update_gpu_memory_with_buffer(
       data.as_slice(),
       hala_gfx::HalaPipelineStageFlags2::RAY_TRACING_SHADER,
-      &self.transfer_staging_buffer,
-      &self.transfer_command_buffers)?;
+      &self.resources.transfer_staging_buffer,
+      &self.resources.transfer_command_buffers)?;
     self.blue_noise_image = Some(image);
 
     Ok(())
@@ -749,15 +1171,15 @@ impl HalaRenderer {
   /// param scene_in_cpu: The scene in the CPU.
   /// return: The result.
   pub fn set_scene(&mut self, scene_in_cpu: &cpu::HalaScene) -> Result<(), HalaRendererError> {
-    let context = self.context.borrow();
+    let context = self.resources.context.borrow();
     // Release the old scene in the GPU.
     self.scene_in_gpu = None;
 
     // Upload the new scene to the GPU.
     let scene_in_gpu = loader::HalaSceneGPUUploader::upload(
       &context,
-      &self.graphics_command_buffers,
-      &self.transfer_command_buffers,
+      &self.resources.graphics_command_buffers,
+      &self.resources.transfer_command_buffers,
       scene_in_cpu,
       false,
       true)?;
@@ -771,12 +1193,12 @@ impl HalaRenderer {
   /// param rotation: The rotation of the environment map.
   /// return: The result.
   pub fn set_envmap<P: AsRef<Path>>(&mut self, path: P, rotation: f32) -> Result<(), HalaRendererError> {
-    let context = self.context.borrow();
+    let context = self.resources.context.borrow();
     self.envmap = Some(crate::envmap::EnvMap::new_with_file(
       path,
       &context,
-      &self.transfer_staging_buffer,
-      &self.transfer_command_buffers,
+      &self.resources.transfer_staging_buffer,
+      &self.resources.transfer_command_buffers,
     )?);
     self.env_rotation = rotation;
 
@@ -807,417 +1229,13 @@ impl HalaRenderer {
     self.exposure_value = exposure_value;
   }
 
-  /// Commit all GPU resources.
-  pub fn commit(&mut self) -> Result<(), HalaRendererError> {
-    let context = self.context.borrow();
-    let scene = self.scene_in_gpu.as_ref().ok_or(HalaRendererError::new("The scene in GPU is none!", None))?;
-
-    // Create dynamic descriptor set.
-    let dynamic_descriptor_set = hala_gfx::HalaDescriptorSet::new(
-      Rc::clone(&context.logical_device),
-      Rc::clone(&self.descriptor_pool),
-      hala_gfx::HalaDescriptorSetLayout::new(
-        Rc::clone(&context.logical_device),
-        &[
-          ( // Main uniform buffer.
-            0,
-            hala_gfx::HalaDescriptorType::UNIFORM_BUFFER,
-            1,
-            hala_gfx::HalaShaderStageFlags::RAYGEN | hala_gfx::HalaShaderStageFlags::CLOSEST_HIT | hala_gfx::HalaShaderStageFlags::CALLABLE,
-            hala_gfx::HalaDescriptorBindingFlags::PARTIALLY_BOUND
-          ),
-          ( // Camera uniform buffer.
-            1,
-            hala_gfx::HalaDescriptorType::UNIFORM_BUFFER,
-            1,
-            hala_gfx::HalaShaderStageFlags::RAYGEN | hala_gfx::HalaShaderStageFlags::CALLABLE,
-            hala_gfx::HalaDescriptorBindingFlags::PARTIALLY_BOUND
-          ),
-          ( // Light uniform buffer.
-            2,
-            hala_gfx::HalaDescriptorType::UNIFORM_BUFFER,
-            1,
-            hala_gfx::HalaShaderStageFlags::RAYGEN | hala_gfx::HalaShaderStageFlags::INTERSECTION | hala_gfx::HalaShaderStageFlags::CALLABLE,
-            hala_gfx::HalaDescriptorBindingFlags::PARTIALLY_BOUND
-          ),
-          ( // Material uniform buffer.
-            3,
-            hala_gfx::HalaDescriptorType::UNIFORM_BUFFER,
-            scene.materials.len() as u32,
-            hala_gfx::HalaShaderStageFlags::RAYGEN | hala_gfx::HalaShaderStageFlags::CALLABLE,
-            hala_gfx::HalaDescriptorBindingFlags::PARTIALLY_BOUND
-          ),
-          ( // Primitive uniform buffer.
-            4,
-            hala_gfx::HalaDescriptorType::UNIFORM_BUFFER,
-            scene.primitives.len() as u32,
-            hala_gfx::HalaShaderStageFlags::RAYGEN | hala_gfx::HalaShaderStageFlags::CLOSEST_HIT,
-            hala_gfx::HalaDescriptorBindingFlags::PARTIALLY_BOUND
-          ),
-        ],
-        "main_dynamic.descriptor_set_layout",
-      )?,
-      context.swapchain.num_of_images,
-      0,
-      "main_dynamic.descriptor_set",
-    )?;
-
-    // Create texture descriptor set.
-    let textures_descriptor_set = hala_gfx::HalaDescriptorSet::new_static(
-      Rc::clone(&context.logical_device),
-      Rc::clone(&self.descriptor_pool),
-      hala_gfx::HalaDescriptorSetLayout::new(
-        Rc::clone(&context.logical_device),
-        &[
-          ( // All textures in the scene.
-            0,
-            hala_gfx::HalaDescriptorType::COMBINED_IMAGE_SAMPLER,
-            scene.textures.len() as u32,
-            hala_gfx::HalaShaderStageFlags::RAYGEN | hala_gfx::HalaShaderStageFlags::CALLABLE,
-            hala_gfx::HalaDescriptorBindingFlags::PARTIALLY_BOUND
-          ),
-        ],
-        "textures.descriptor_set_layout",
-      )?,
-      1,
-      0,
-      "textures.descriptor_set",
-    )?;
-
-    let textures: &Vec<_> = scene.textures.as_ref();
-    let samplers: &Vec<_> = scene.samplers.as_ref();
-    let images: &Vec<_> = scene.images.as_ref();
-    let mut combined_textures = Vec::new();
-    for (sampler_index, image_index) in textures.iter().enumerate() {
-      let sampler = samplers.get(sampler_index).ok_or(HalaRendererError::new("The sampler is none!", None))?;
-      let image = images.get(*image_index as usize).ok_or(HalaRendererError::new("The image is none!", None))?;
-      combined_textures.push((image, sampler));
-    }
-    if !combined_textures.is_empty() {
-      textures_descriptor_set.update_combined_image_samplers(
-        0,
-        0,
-        combined_textures.as_slice(),
-      );
-    }
-
-    // If we have cache file at ./out/pipeline_cache.bin, we can load it.
-    let pipeline_cache = if std::path::Path::new("./out/pipeline_cache.bin").exists() {
-      log::debug!("Load pipeline cache from file: ./out/pipeline_cache.bin");
-      hala_gfx::HalaPipelineCache::with_cache_file(
-        Rc::clone(&context.logical_device),
-        "./out/pipeline_cache.bin",
-      )?
-    } else {
-      log::debug!("Create a new pipeline cache.");
-      hala_gfx::HalaPipelineCache::new(
-        Rc::clone(&context.logical_device),
-      )?
-    };
-
-    // Create pipeline.
-    let pipeline = hala_gfx::HalaRayTracingPipeline::new(
-      Rc::clone(&context.logical_device),
-      &[&self.static_descriptor_set.layout, &dynamic_descriptor_set.layout, &textures_descriptor_set.layout],
-      self.raygen_shaders.as_slice(),
-      self.miss_shaders.as_slice(),
-      self.hit_shaders.as_slice(),
-      self.callable_shaders.as_slice(),
-      2,
-      Some(&pipeline_cache),
-      false,
-      "main.pipeline",
-    )?;
-
-    // Save pipeline cache.
-    pipeline_cache.save("./out/pipeline_cache.bin")?;
-
-    // Create shader binding table.
-    let sbt = hala_gfx::HalaShaderBindingTable::new(
-      Rc::clone(&context.logical_device),
-      self.raygen_shaders.as_slice(),
-      self.miss_shaders.as_slice(),
-      self.hit_shaders.as_slice(),
-      self.callable_shaders.as_slice(),
-      &pipeline,
-      &self.transfer_staging_buffer,
-      &self.transfer_command_buffers,
-      "main.sbt",
-    )?;
-
-    self.textures_descriptor_set = Some(textures_descriptor_set);
-    self.pipeline = Some(pipeline);
-    self.sbt = Some(sbt);
-
-    // Update static descriptor set.
-    let mut static_binding_index = 0;
-    self.static_descriptor_set.update_acceleration_structures(
-      0,
-      static_binding_index,
-      &[
-        scene
-          .tplas.as_ref().ok_or(HalaRendererError::new("The top level acceleration structure is none!", None))?
-      ],
-    );
-    static_binding_index += 1;
-
-    self.final_image_binding_index = static_binding_index;
-    self.static_descriptor_set.update_storage_images(
-      0,
-      self.final_image_binding_index,
-      std::slice::from_ref(self.final_image.as_ref()),
-    );
-    static_binding_index += 1;
-
-    self.accum_image_binding_index = static_binding_index;
-    self.static_descriptor_set.update_storage_images(
-      0,
-      self.accum_image_binding_index,
-      std::slice::from_ref(&self.accum_image.as_ref()),
-    );
-    static_binding_index += 1;
-    self.albedo_image_binding_index = static_binding_index;
-    self.static_descriptor_set.update_storage_images(
-      0,
-      self.albedo_image_binding_index,
-      std::slice::from_ref(&self.albedo_image.as_ref()),
-    );
-    static_binding_index += 1;
-    self.normal_image_binding_index = static_binding_index;
-    self.static_descriptor_set.update_storage_images(
-      0,
-      self.normal_image_binding_index,
-      std::slice::from_ref(&self.normal_image.as_ref()),
-    );
-    static_binding_index += 1;
-
-    let blue_noise_image = self.blue_noise_image.as_ref().ok_or(HalaRendererError::new("The blue noise image is none!", None))?;
-    self.static_descriptor_set.update_sampled_images(
-      0,
-      static_binding_index,
-      std::slice::from_ref(blue_noise_image),
-    );
-    static_binding_index += 1;
-
-    if let Some(envmap) = self.envmap.as_ref() {
-      self.static_descriptor_set.update_combined_image_samplers(
-        0,
-        static_binding_index,
-        &[(&envmap.image, &envmap.sampler)],
-      );
-      static_binding_index += 1;
-      self.static_descriptor_set.update_sampled_images(
-        0,
-        static_binding_index,
-        &[&envmap.marginal_distribution_image, &envmap.conditional_distribution_image],
-      );
-      static_binding_index += 1;
-      self.static_descriptor_set.update_samplers(
-        0,
-        static_binding_index,
-        &[&envmap.distribution_sampler],
-      );
-      // static_binding_index += 1;
-    }
-
-    // Update dynamic descriptor set.
-    for index in 0..context.swapchain.num_of_images {
-      dynamic_descriptor_set.update_uniform_buffers(
-        index,
-        0,
-        &[self.global_uniform_buffer.as_ref()],
-      );
-      dynamic_descriptor_set.update_uniform_buffers(
-        index,
-        1,
-        &[&scene.cameras],
-      );
-      dynamic_descriptor_set.update_uniform_buffers(
-        index,
-        2,
-        &[&scene.lights],
-      );
-      dynamic_descriptor_set.update_uniform_buffers(
-        index,
-        3,
-        scene.materials.as_slice(),
-      );
-      dynamic_descriptor_set.update_uniform_buffers(
-        index,
-        4,
-        scene.primitives.as_slice(),
-      );
-    }
-    self.dynamic_descriptor_set = Some(dynamic_descriptor_set);
-
-    Ok(())
-  }
-
-  /// Update the renderer.
-  /// param delta_time: The delta time.
-  /// param width: The width of the window.
-  /// param height: The height of the window.
-  /// param ui_fn: The draw UI function.
-  /// return: The result.
-  pub fn update<F>(&mut self, _delta_time: f64, width: u32, height: u32, ui_fn: F) -> Result<(), HalaRendererError>
-   where F: FnOnce(usize, &hala_gfx::HalaCommandBufferSet) -> Result<(), hala_gfx::HalaGfxError>
-  {
-    self.check_and_restore_device(width, height)?;
-    let context = self.context.borrow();
-
-    // Statistic.
-    if self.total_frames > context.swapchain.num_of_images as u64 {
-      let gpu_time = context.get_gpu_frame_time()?;
-      let gpu_time_nanos = gpu_time.as_nanos();
-      self.total_gpu_nanoseconds += gpu_time_nanos;
-      self.total_gpu_frames += 1;
-
-      let now = std::time::Instant::now();
-      let interval = now - self.last_stat_time;
-      self.elapsed_time += interval;
-      if self.elapsed_time > std::time::Duration::from_secs(1) {
-        let elapsed_time_nanos = self.elapsed_time.as_nanos();
-        log::info!(
-          "FPS: {}, GPU Time: {:.4}ms, CPU Time: {:.4}ms, Total Frames: {}",
-          self.total_gpu_frames * elapsed_time_nanos as u64 / 1000000000,
-          self.total_gpu_nanoseconds as f64 / self.total_gpu_frames as f64 / 1000000.0,
-          elapsed_time_nanos as f64 / self.total_gpu_frames as f64 / 1000000.0,
-          self.total_frames + 1,
-        );
-        self.total_gpu_nanoseconds = 0;
-        self.total_gpu_frames = 0;
-        self.elapsed_time -= std::time::Duration::from_secs(1);
-      }
-      self.last_stat_time = now;
-    }
-    self.total_frames += 1;
-
-    // Skip the update if the total frames is greater than the max frames.
-    if self.total_frames > self.max_frames {
-      return Ok(());
-    }
-
-    // Update global uniform buffer.
-    let (use_hdri, env_total_sum, env_map_width, env_map_height) = match self.envmap.as_ref() {
-      Some(envmap) => (true, envmap.total_luminance, envmap.image.extent.width, envmap.image.extent.height),
-      None => (false, 0f32, 0, 0),
-    };
-    let num_of_lights = if let Some(scene_in_gpu) = self.scene_in_gpu.as_ref() {
-      scene_in_gpu.light_data.len() as u32
-    } else {
-      0
-    };
-    self.global_uniform_buffer.update_memory(0, &[HalaGlobalUniform {
-      ground_color: self.env_ground_color,
-      sky_color: self.env_sky_color,
-      resolution: glam::Vec2::new(self.width as f32, self.height as f32),
-      max_depth: self.max_depth,
-      rr_depth: self.rr_depth,
-      frame_index: (self.total_frames - 1) as u32,
-      camera_index: 0,
-      env_type: if use_hdri { HalaEnvType::MAP.to_u8() as u32 } else { HalaEnvType::SKY.to_u8() as u32 },
-      env_map_width,
-      env_map_height,
-      env_total_sum,
-      env_rotation: self.env_rotation / 360f32,
-      env_intensity: self.env_intensity,
-      exposure_value: self.exposure_value,
-      enable_tonemap: self.enable_tonemap as u32,
-      enable_aces: self.enable_aces as u32,
-      use_simple_aces: self.use_simple_aces as u32,
-      num_of_lights,
-    }])?;
-
-    // Update the renderer.
-    self.image_index = context.prepare_frame()?;
-    context.record_graphics_command_buffer(
-      self.image_index,
-      &self.graphics_command_buffers,
-      None,
-      |index, command_buffers| {
-        ui_fn(index, command_buffers)?;
-
-        Ok(())
-      },
-      Some(&self.final_image),
-      |index, command_buffers| {
-        let _pipline = self.pipeline.as_ref().ok_or(hala_gfx::HalaGfxError::new("The pipeline is none!", None))?;
-        let _sbt = self.sbt.as_ref().ok_or(hala_gfx::HalaGfxError::new("The shader binding table is none!", None))?;
-
-        command_buffers.bind_ray_tracing_pipeline(index, _pipline);
-        command_buffers.bind_ray_tracing_descriptor_sets(
-          index,
-          _pipline,
-          0,
-          &[
-            self.static_descriptor_set.as_ref(),
-            self.dynamic_descriptor_set.as_ref().ok_or(hala_gfx::HalaGfxError::new("The dynamic descriptor set is none!", None))?,
-            self.textures_descriptor_set.as_ref().ok_or(hala_gfx::HalaGfxError::new("The textures descriptor set is none!", None))?,
-          ],
-          &[],
-        );
-        command_buffers.trace_rays(
-          index,
-          _sbt,
-          self.width,
-          self.height,
-          1,
-        );
-
-        Ok(true)
-      },
-    )?;
-
-    Ok(())
-  }
-
-  /// Render the renderer.
-  /// return: The result.
-  pub fn render(&mut self) -> Result<(), HalaRendererError> {
-    let mut context = self.context.borrow_mut();
-
-    // Skip the rendering and wait to reset the device on the next frame update.
-    if self.is_device_lost {
-      return Ok(());
-    }
-
-    // Skip the update if the total frames is greater than the max frames.
-    if self.total_frames > self.max_frames {
-      return Ok(());
-    }
-
-    // Render the renderer.
-    match context.submit_and_present_frame(self.image_index, &self.graphics_command_buffers) {
-      Ok(_) => (),
-      Err(err) => {
-        if err.is_device_lost() {
-          log::warn!("The device is lost!");
-          self.is_device_lost = true;
-        } else {
-          return Err(err.into());
-        }
-      }
-    }
-
-    Ok(())
-  }
-
-  /// Wait the renderer idle.
-  /// return: The result.
-  pub fn wait_idle(&self) -> Result<(), HalaRendererError> {
-    let context = self.context.borrow();
-    context.logical_device.borrow().wait_idle()?;
-
-    Ok(())
-  }
-
   /// Save the images to the file.
   /// param path: The output path of the image.
   /// return: The result.
   pub fn save_images<P: AsRef<Path>>(&self, path: P) -> Result<(), HalaRendererError> {
-    let context = self.context.borrow();
+    let context = self.resources.context.borrow();
 
-    if self.is_device_lost {
+    if self.data.is_device_lost {
       // Skip the saving and wait to reset the device on the next frame update.
       log::warn!("The device is lost! Please wait to reset the device and try again.");
       return Ok(());
@@ -1230,11 +1248,11 @@ impl HalaRenderer {
     let normal_image_path = path.with_file_name(format!("{}_normal.pfm", filename.to_string_lossy()));
 
     let save_image_2_file = |image: &hala_gfx::HalaImage, path: &Path, is_color: bool| -> Result<(), HalaRendererError> {
-      let mut pixels = vec![0f32; 4 * self.width as usize * self.height as usize];
+      let mut pixels = vec![0f32; 4 * self.info.width as usize * self.info.height as usize];
 
       self.wait_idle()?;
       context.logical_device.borrow().transfer_execute_and_submit(
-        &self.transfer_command_buffers,
+        &self.resources.transfer_command_buffers,
         0,
         |_logical_device, command_buffers, index| {
           command_buffers.copy_image_2_buffer(
@@ -1340,71 +1358,6 @@ impl HalaRenderer {
     log::debug!("Begin to save the normal image...");
     save_image_2_file(&self.normal_image, &normal_image_path, false)?;
     log::info!("Save the normal image to file: {:?}", normal_image_path);
-
-    Ok(())
-  }
-
-  /// Check and restore the device.
-  /// param width: The width of the swapchain.
-  /// param height: The height of the swapchain.
-  /// return: The result.
-  fn check_and_restore_device(&mut self, width: u32, height: u32) -> Result<(), HalaRendererError> {
-    let mut context = self.context.borrow_mut();
-
-    if self.is_device_lost {
-      context.reset_swapchain(width, height)?;
-
-      self.width = width;
-      self.height = height;
-      unsafe {
-        std::mem::ManuallyDrop::drop(&mut self.host_accessible_buffer);
-        std::mem::ManuallyDrop::drop(&mut self.normal_image);
-        std::mem::ManuallyDrop::drop(&mut self.albedo_image);
-        std::mem::ManuallyDrop::drop(&mut self.accum_image);
-        std::mem::ManuallyDrop::drop(&mut self.final_image);
-      }
-      let (
-        final_image,
-        accum_image,
-        albedo_image,
-        normal_image,
-        host_accessible_buffer,
-      ) = Self::create_storage_images(&context)?;
-      self.final_image = std::mem::ManuallyDrop::new(final_image);
-      self.accum_image = std::mem::ManuallyDrop::new(accum_image);
-      self.albedo_image = std::mem::ManuallyDrop::new(albedo_image);
-      self.normal_image = std::mem::ManuallyDrop::new(normal_image);
-      self.host_accessible_buffer = std::mem::ManuallyDrop::new(host_accessible_buffer);
-
-      self.static_descriptor_set.update_storage_images(
-        0,
-        self.final_image_binding_index,
-        std::slice::from_ref(self.final_image.as_ref()),
-      );
-      self.static_descriptor_set.update_storage_images(
-        0,
-        self.accum_image_binding_index,
-        std::slice::from_ref(&self.accum_image.as_ref()),
-      );
-      self.static_descriptor_set.update_storage_images(
-        0,
-        self.albedo_image_binding_index,
-        std::slice::from_ref(&self.albedo_image.as_ref()),
-      );
-      self.static_descriptor_set.update_storage_images(
-        0,
-        self.normal_image_binding_index,
-        std::slice::from_ref(&self.normal_image.as_ref()),
-      );
-
-      self.total_frames = 0;
-      self.last_stat_time = std::time::Instant::now();
-      self.elapsed_time = std::time::Duration::from_secs(0);
-      self.total_gpu_nanoseconds = 0;
-      self.total_gpu_frames = 0;
-
-      self.is_device_lost = false;
-    }
 
     Ok(())
   }
