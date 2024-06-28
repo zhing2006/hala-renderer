@@ -438,7 +438,7 @@ impl HalaRenderer {
         &[
           ( // Materials uniform buffer.
             0,
-            hala_gfx::HalaDescriptorType::STORAGE_BUFFER,
+            hala_gfx::HalaDescriptorType::UNIFORM_BUFFER,
             scene.materials.len() as u32,
             hala_gfx::HalaShaderStageFlags::VERTEX | hala_gfx::HalaShaderStageFlags::FRAGMENT | hala_gfx::HalaShaderStageFlags::COMPUTE,
             hala_gfx::HalaDescriptorBindingFlags::PARTIALLY_BOUND
@@ -493,7 +493,7 @@ impl HalaRenderer {
       dynamic_descriptor_set.update_uniform_buffers(
         index,
         0,
-        scene.materials.iter().map(|buffer| buffer.as_ref()).collect::<Vec<_>>().as_slice(),
+        scene.materials.as_slice(),
       );
       dynamic_descriptor_set.update_uniform_buffers(
         index,
