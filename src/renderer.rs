@@ -228,13 +228,6 @@ impl HalaRenderer {
             hala_gfx::HalaShaderStageFlags::VERTEX | hala_gfx::HalaShaderStageFlags::FRAGMENT | hala_gfx::HalaShaderStageFlags::COMPUTE,
             hala_gfx::HalaDescriptorBindingFlags::PARTIALLY_BOUND
           ),
-          ( // Materials storage buffer.
-            3,
-            hala_gfx::HalaDescriptorType::STORAGE_BUFFER,
-            1,
-            hala_gfx::HalaShaderStageFlags::VERTEX | hala_gfx::HalaShaderStageFlags::FRAGMENT | hala_gfx::HalaShaderStageFlags::COMPUTE,
-            hala_gfx::HalaDescriptorBindingFlags::PARTIALLY_BOUND
-          ),
         ],
         "main_static.descriptor_set_layout",
       )?,
@@ -443,8 +436,15 @@ impl HalaRenderer {
       hala_gfx::HalaDescriptorSetLayout::new(
         Rc::clone(&context.logical_device),
         &[
-          ( // Object uniform buffer.
+          ( // Materials uniform buffer.
             0,
+            hala_gfx::HalaDescriptorType::STORAGE_BUFFER,
+            scene.materials.len() as u32,
+            hala_gfx::HalaShaderStageFlags::VERTEX | hala_gfx::HalaShaderStageFlags::FRAGMENT | hala_gfx::HalaShaderStageFlags::COMPUTE,
+            hala_gfx::HalaDescriptorBindingFlags::PARTIALLY_BOUND
+          ),
+          ( // Object uniform buffer.
+            1,
             hala_gfx::HalaDescriptorType::UNIFORM_BUFFER,
             scene.meshes.len() as u32,
             hala_gfx::HalaShaderStageFlags::VERTEX | hala_gfx::HalaShaderStageFlags::FRAGMENT | hala_gfx::HalaShaderStageFlags::COMPUTE,
@@ -493,6 +493,11 @@ impl HalaRenderer {
       dynamic_descriptor_set.update_uniform_buffers(
         index,
         0,
+        scene.materials.iter().map(|buffer| buffer.as_ref()).collect::<Vec<_>>().as_slice(),
+      );
+      dynamic_descriptor_set.update_uniform_buffers(
+        index,
+        1,
         self.object_uniform_buffers.iter().map(|buffers| &buffers[index]).collect::<Vec<_>>().as_slice(),
       );
     }
@@ -501,7 +506,6 @@ impl HalaRenderer {
     self.static_descriptor_set.update_uniform_buffers(0, 0, &[self.global_uniform_buffer.as_ref()]);
     self.static_descriptor_set.update_uniform_buffers(0, 1, &[scene.cameras.as_ref()]);
     self.static_descriptor_set.update_uniform_buffers(0, 2, &[scene.lights.as_ref()]);
-    self.static_descriptor_set.update_storage_buffers(0, 3, &[scene.materials.as_ref()]);
 
     // Create texture descriptor set.
     let textures_descriptor_set = hala_gfx::HalaDescriptorSet::new_static(

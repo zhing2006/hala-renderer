@@ -15,7 +15,7 @@ pub struct HalaScene {
   pub cameras: HalaBuffer,
   pub lights: HalaBuffer,
   pub light_aabbs: HalaBuffer,
-  pub materials: HalaBuffer,
+  pub materials: Vec<HalaBuffer>,
   pub textures: Vec<u32>, // indices to the images.
   pub samplers: Vec<HalaSampler>,
   pub images: Vec<HalaImage>,

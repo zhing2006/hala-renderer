@@ -60,7 +60,7 @@ impl HalaSceneGPUUploader {
     let camera_buffer_size = (std::mem::size_of::<gpu::HalaCamera>() * MAX_CAMERA_COUNT) as u64;
     let light_buffer_size = (std::mem::size_of::<gpu::HalaLight>() * MAX_LIGHT_COUNT) as u64;
     let light_aabb_buffer_size = (std::mem::size_of::<HalaAABB>() * MAX_LIGHT_COUNT) as u64;
-    let material_buffer_size = (std::mem::size_of::<gpu::HalaMaterial>() * scene_in_cpu.materials.len()) as u64;
+    let material_buffer_size = (std::mem::size_of::<gpu::HalaMaterial>()) as u64;
 
     let max_buffer_size = std::cmp::max(
       std::cmp::max(camera_buffer_size, light_buffer_size),
@@ -289,24 +289,29 @@ impl HalaSceneGPUUploader {
       &staging_buffer,
       transfer_command_buffers)?;
 
-    // Create the material buffer.
-    let material_buffer = HalaBuffer::new(
-      Rc::clone(&context.logical_device),
-      material_buffer_size,
-      HalaBufferUsageFlags::STORAGE_BUFFER | HalaBufferUsageFlags::TRANSFER_DST,
-      HalaMemoryLocation::GpuOnly,
-      "materials.buffer")?;
+    // Create the material buffers.
+    let mut material_buffers = Vec::with_capacity(scene_in_cpu.materials.len());
 
     // Copy the material data to GPU by the staging buffer.
-    let mut materials = Vec::with_capacity(scene_in_cpu.materials.len());
-    for material in scene_in_cpu.materials.iter() {
-      materials.push(gpu::HalaMaterial::from(material));
+    for (material_index, material) in scene_in_cpu.materials.iter().enumerate() {
+      let gpu_material = gpu::HalaMaterial::from(material);
+
+      let material_buffer = HalaBuffer::new(
+        Rc::clone(&context.logical_device),
+        material_buffer_size,
+        HalaBufferUsageFlags::UNIFORM_BUFFER | HalaBufferUsageFlags::TRANSFER_DST,
+        HalaMemoryLocation::GpuOnly,
+        &format!("material_{}.buffer", material_index)
+      )?;
+
+      material_buffer.update_gpu_memory_with_buffer_raw(
+        &gpu_material as *const gpu::HalaMaterial as *const u8,
+        material_buffer_size as usize,
+        &staging_buffer,
+        transfer_command_buffers)?;
+
+      material_buffers.push(material_buffer);
     }
-    material_buffer.update_gpu_memory_with_buffer_raw(
-      materials.as_ptr() as *const u8,
-      material_buffer_size as usize,
-      &staging_buffer,
-      transfer_command_buffers)?;
 
     // Create the samplers and images.
     let mut samplers = Vec::with_capacity(scene_in_cpu.texture2image_mapping.len());
@@ -465,7 +470,7 @@ impl HalaSceneGPUUploader {
       cameras: camera_buffer,
       lights: light_buffer,
       light_aabbs: light_aabb_buffer,
-      materials: material_buffer,
+      materials: material_buffers,
       textures,
       samplers,
       images,

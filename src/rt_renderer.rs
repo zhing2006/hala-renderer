@@ -80,7 +80,7 @@ pub struct HalaRenderer {
 
   pub(crate) descriptor_pool: std::mem::ManuallyDrop<Rc<RefCell<hala_gfx::HalaDescriptorPool>>>,
   pub(crate) static_descriptor_set: std::mem::ManuallyDrop<hala_gfx::HalaDescriptorSet>,
-  pub(crate) dynamic_descriptor_set: std::mem::ManuallyDrop<hala_gfx::HalaDescriptorSet>,
+  pub(crate) dynamic_descriptor_set: Option<hala_gfx::HalaDescriptorSet>,
   pub(crate) global_uniform_buffer: std::mem::ManuallyDrop<hala_gfx::HalaBuffer>,
   pub(crate) final_image: std::mem::ManuallyDrop<hala_gfx::HalaImage>,
   pub(crate) final_image_binding_index: u32,
@@ -139,12 +139,12 @@ impl Drop for HalaRenderer {
       self.miss_shaders.clear();
       self.hit_shaders.clear();
       self.callable_shaders.clear();
+      self.dynamic_descriptor_set = None;
       std::mem::ManuallyDrop::drop(&mut self.normal_image);
       std::mem::ManuallyDrop::drop(&mut self.albedo_image);
       std::mem::ManuallyDrop::drop(&mut self.accum_image);
       std::mem::ManuallyDrop::drop(&mut self.final_image);
       std::mem::ManuallyDrop::drop(&mut self.global_uniform_buffer);
-      std::mem::ManuallyDrop::drop(&mut self.dynamic_descriptor_set);
       std::mem::ManuallyDrop::drop(&mut self.static_descriptor_set);
       std::mem::ManuallyDrop::drop(&mut self.descriptor_pool);
       std::mem::ManuallyDrop::drop(&mut self.transfer_staging_buffer);
@@ -326,55 +326,6 @@ impl HalaRenderer {
       "main_static.descriptor_set",
     )?;
 
-    let dynamic_descriptor_set = hala_gfx::HalaDescriptorSet::new(
-      Rc::clone(&context.logical_device),
-      Rc::clone(&descriptor_pool),
-      hala_gfx::HalaDescriptorSetLayout::new(
-        Rc::clone(&context.logical_device),
-        &[
-          ( // Main uniform buffer.
-            0,
-            hala_gfx::HalaDescriptorType::UNIFORM_BUFFER,
-            1,
-            hala_gfx::HalaShaderStageFlags::RAYGEN | hala_gfx::HalaShaderStageFlags::CLOSEST_HIT | hala_gfx::HalaShaderStageFlags::CALLABLE,
-            hala_gfx::HalaDescriptorBindingFlags::PARTIALLY_BOUND
-          ),
-          ( // Camera uniform buffer.
-            1,
-            hala_gfx::HalaDescriptorType::UNIFORM_BUFFER,
-            1,
-            hala_gfx::HalaShaderStageFlags::RAYGEN | hala_gfx::HalaShaderStageFlags::CALLABLE,
-            hala_gfx::HalaDescriptorBindingFlags::PARTIALLY_BOUND
-          ),
-          ( // Light uniform buffer.
-            2,
-            hala_gfx::HalaDescriptorType::UNIFORM_BUFFER,
-            1,
-            hala_gfx::HalaShaderStageFlags::RAYGEN | hala_gfx::HalaShaderStageFlags::INTERSECTION | hala_gfx::HalaShaderStageFlags::CALLABLE,
-            hala_gfx::HalaDescriptorBindingFlags::PARTIALLY_BOUND
-          ),
-          ( // Material storage buffer.
-            3,
-            hala_gfx::HalaDescriptorType::STORAGE_BUFFER,
-            1,
-            hala_gfx::HalaShaderStageFlags::RAYGEN | hala_gfx::HalaShaderStageFlags::CALLABLE,
-            hala_gfx::HalaDescriptorBindingFlags::PARTIALLY_BOUND
-          ),
-          ( // Primitive storage buffer.
-            4,
-            hala_gfx::HalaDescriptorType::STORAGE_BUFFER,
-            1,
-            hala_gfx::HalaShaderStageFlags::RAYGEN | hala_gfx::HalaShaderStageFlags::CLOSEST_HIT,
-            hala_gfx::HalaDescriptorBindingFlags::PARTIALLY_BOUND
-          ),
-        ],
-        "main_dynamic.descriptor_set_layout",
-      )?,
-      context.swapchain.num_of_images,
-      0,
-      "main_dynamic.descriptor_set",
-    )?;
-
     // Create global uniform buffer.
     let uniform_buffer = hala_gfx::HalaBuffer::new(
       Rc::clone(&context.logical_device),
@@ -412,7 +363,7 @@ impl HalaRenderer {
       transfer_staging_buffer: std::mem::ManuallyDrop::new(transfer_staging_buffer),
       descriptor_pool: std::mem::ManuallyDrop::new(descriptor_pool),
       static_descriptor_set: std::mem::ManuallyDrop::new(static_descriptor_set),
-      dynamic_descriptor_set: std::mem::ManuallyDrop::new(dynamic_descriptor_set),
+      dynamic_descriptor_set: None,
       global_uniform_buffer: std::mem::ManuallyDrop::new(uniform_buffer),
       final_image: std::mem::ManuallyDrop::new(final_image),
       final_image_binding_index: 0,
@@ -859,6 +810,57 @@ impl HalaRenderer {
   /// Commit all GPU resources.
   pub fn commit(&mut self) -> Result<(), HalaRendererError> {
     let context = self.context.borrow();
+    let scene = self.scene_in_gpu.as_ref().ok_or(HalaRendererError::new("The scene in GPU is none!", None))?;
+
+    // Create dynamic descriptor set.
+    let dynamic_descriptor_set = hala_gfx::HalaDescriptorSet::new(
+      Rc::clone(&context.logical_device),
+      Rc::clone(&self.descriptor_pool),
+      hala_gfx::HalaDescriptorSetLayout::new(
+        Rc::clone(&context.logical_device),
+        &[
+          ( // Main uniform buffer.
+            0,
+            hala_gfx::HalaDescriptorType::UNIFORM_BUFFER,
+            1,
+            hala_gfx::HalaShaderStageFlags::RAYGEN | hala_gfx::HalaShaderStageFlags::CLOSEST_HIT | hala_gfx::HalaShaderStageFlags::CALLABLE,
+            hala_gfx::HalaDescriptorBindingFlags::PARTIALLY_BOUND
+          ),
+          ( // Camera uniform buffer.
+            1,
+            hala_gfx::HalaDescriptorType::UNIFORM_BUFFER,
+            1,
+            hala_gfx::HalaShaderStageFlags::RAYGEN | hala_gfx::HalaShaderStageFlags::CALLABLE,
+            hala_gfx::HalaDescriptorBindingFlags::PARTIALLY_BOUND
+          ),
+          ( // Light uniform buffer.
+            2,
+            hala_gfx::HalaDescriptorType::UNIFORM_BUFFER,
+            1,
+            hala_gfx::HalaShaderStageFlags::RAYGEN | hala_gfx::HalaShaderStageFlags::INTERSECTION | hala_gfx::HalaShaderStageFlags::CALLABLE,
+            hala_gfx::HalaDescriptorBindingFlags::PARTIALLY_BOUND
+          ),
+          ( // Material uniform buffer.
+            3,
+            hala_gfx::HalaDescriptorType::UNIFORM_BUFFER,
+            scene.materials.len() as u32,
+            hala_gfx::HalaShaderStageFlags::RAYGEN | hala_gfx::HalaShaderStageFlags::CALLABLE,
+            hala_gfx::HalaDescriptorBindingFlags::PARTIALLY_BOUND
+          ),
+          ( // Primitive storage buffer.
+            4,
+            hala_gfx::HalaDescriptorType::STORAGE_BUFFER,
+            1,
+            hala_gfx::HalaShaderStageFlags::RAYGEN | hala_gfx::HalaShaderStageFlags::CLOSEST_HIT,
+            hala_gfx::HalaDescriptorBindingFlags::PARTIALLY_BOUND
+          ),
+        ],
+        "main_dynamic.descriptor_set_layout",
+      )?,
+      context.swapchain.num_of_images,
+      0,
+      "main_dynamic.descriptor_set",
+    )?;
 
     // Create texture descriptor set.
     let textures_descriptor_set = hala_gfx::HalaDescriptorSet::new_static(
@@ -870,8 +872,7 @@ impl HalaRenderer {
           ( // All textures in the scene.
             0,
             hala_gfx::HalaDescriptorType::COMBINED_IMAGE_SAMPLER,
-            self.scene_in_gpu.as_ref().ok_or(HalaRendererError::new("The scene in GPU is none!", None))?
-              .textures.len() as u32,
+            scene.textures.len() as u32,
             hala_gfx::HalaShaderStageFlags::RAYGEN | hala_gfx::HalaShaderStageFlags::CALLABLE,
             hala_gfx::HalaDescriptorBindingFlags::PARTIALLY_BOUND
           ),
@@ -883,9 +884,9 @@ impl HalaRenderer {
       "textures.descriptor_set",
     )?;
 
-    let textures: &Vec<_> = self.scene_in_gpu.as_ref().ok_or(HalaRendererError::new("The scene in GPU is none!", None))?.textures.as_ref();
-    let samplers: &Vec<_> = self.scene_in_gpu.as_ref().ok_or(HalaRendererError::new("The scene in GPU is none!", None))?.samplers.as_ref();
-    let images: &Vec<_> = self.scene_in_gpu.as_ref().ok_or(HalaRendererError::new("The scene in GPU is none!", None))?.images.as_ref();
+    let textures: &Vec<_> = scene.textures.as_ref();
+    let samplers: &Vec<_> = scene.samplers.as_ref();
+    let images: &Vec<_> = scene.images.as_ref();
     let mut combined_textures = Vec::new();
     for (sampler_index, image_index) in textures.iter().enumerate() {
       let sampler = samplers.get(sampler_index).ok_or(HalaRendererError::new("The sampler is none!", None))?;
@@ -917,7 +918,7 @@ impl HalaRenderer {
     // Create pipeline.
     let pipeline = hala_gfx::HalaRayTracingPipeline::new(
       Rc::clone(&context.logical_device),
-      &[&self.static_descriptor_set.layout, &self.dynamic_descriptor_set.layout, &textures_descriptor_set.layout],
+      &[&self.static_descriptor_set.layout, &dynamic_descriptor_set.layout, &textures_descriptor_set.layout],
       self.raygen_shaders.as_slice(),
       self.miss_shaders.as_slice(),
       self.hit_shaders.as_slice(),
@@ -954,7 +955,7 @@ impl HalaRenderer {
       0,
       static_binding_index,
       &[
-        self.scene_in_gpu.as_ref().ok_or(HalaRendererError::new("The scene in GPU is none!", None))?
+        scene
           .tplas.as_ref().ok_or(HalaRendererError::new("The top level acceleration structure is none!", None))?
       ],
     );
@@ -1021,33 +1022,34 @@ impl HalaRenderer {
 
     // Update dynamic descriptor set.
     for index in 0..context.swapchain.num_of_images {
-      self.dynamic_descriptor_set.update_uniform_buffers(
+      dynamic_descriptor_set.update_uniform_buffers(
         index,
         0,
         &[self.global_uniform_buffer.as_ref()],
       );
-      self.dynamic_descriptor_set.update_uniform_buffers(
+      dynamic_descriptor_set.update_uniform_buffers(
         index,
         1,
-        &[&self.scene_in_gpu.as_ref().ok_or(HalaRendererError::new("The scene in GPU is none!", None))?.cameras],
+        &[&scene.cameras],
       );
-      self.dynamic_descriptor_set.update_uniform_buffers(
+      dynamic_descriptor_set.update_uniform_buffers(
         index,
         2,
-        &[&self.scene_in_gpu.as_ref().ok_or(HalaRendererError::new("The scene in GPU is none!", None))?.lights],
+        &[&scene.lights],
       );
-      self.dynamic_descriptor_set.update_storage_buffers(
+      dynamic_descriptor_set.update_uniform_buffers(
         index,
         3,
-        &[&self.scene_in_gpu.as_ref().ok_or(HalaRendererError::new("The scene in GPU is none!", None))?.materials],
+        scene.materials.as_slice(),
       );
-      self.dynamic_descriptor_set.update_storage_buffers(
+      dynamic_descriptor_set.update_storage_buffers(
         index,
         4,
-        &[self.scene_in_gpu.as_ref().ok_or(HalaRendererError::new("The scene in GPU is none!", None))?
+        &[scene
           .primitives.as_ref().ok_or(HalaRendererError::new("The primitives in GPU is none!", None))?],
       );
     }
+    self.dynamic_descriptor_set = Some(dynamic_descriptor_set);
 
     Ok(())
   }
@@ -1150,7 +1152,7 @@ impl HalaRenderer {
           0,
           &[
             self.static_descriptor_set.as_ref(),
-            self.dynamic_descriptor_set.as_ref(),
+            self.dynamic_descriptor_set.as_ref().ok_or(hala_gfx::HalaGfxError::new("The dynamic descriptor set is none!", None))?,
             self.textures_descriptor_set.as_ref().ok_or(hala_gfx::HalaGfxError::new("The textures descriptor set is none!", None))?,
           ],
           &[],
