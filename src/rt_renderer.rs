@@ -226,7 +226,7 @@ impl HalaRenderer {
         ),
         (
           hala_gfx::HalaDescriptorType::UNIFORM_BUFFER,
-          16,
+          256,
         ),
         (
           hala_gfx::HalaDescriptorType::STORAGE_BUFFER,
@@ -847,10 +847,10 @@ impl HalaRenderer {
             hala_gfx::HalaShaderStageFlags::RAYGEN | hala_gfx::HalaShaderStageFlags::CALLABLE,
             hala_gfx::HalaDescriptorBindingFlags::PARTIALLY_BOUND
           ),
-          ( // Primitive storage buffer.
+          ( // Primitive uniform buffer.
             4,
-            hala_gfx::HalaDescriptorType::STORAGE_BUFFER,
-            1,
+            hala_gfx::HalaDescriptorType::UNIFORM_BUFFER,
+            scene.primitives.len() as u32,
             hala_gfx::HalaShaderStageFlags::RAYGEN | hala_gfx::HalaShaderStageFlags::CLOSEST_HIT,
             hala_gfx::HalaDescriptorBindingFlags::PARTIALLY_BOUND
           ),
@@ -1042,11 +1042,10 @@ impl HalaRenderer {
         3,
         scene.materials.as_slice(),
       );
-      dynamic_descriptor_set.update_storage_buffers(
+      dynamic_descriptor_set.update_uniform_buffers(
         index,
         4,
-        &[scene
-          .primitives.as_ref().ok_or(HalaRendererError::new("The primitives in GPU is none!", None))?],
+        scene.primitives.as_slice(),
       );
     }
     self.dynamic_descriptor_set = Some(dynamic_descriptor_set);

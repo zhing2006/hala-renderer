@@ -23,7 +23,7 @@ pub struct HalaScene {
 
   pub instances: Option<HalaBuffer>,
   pub tplas: Option<HalaAccelerationStructure>,
-  pub primitives: Option<HalaBuffer>,
+  pub primitives: Vec<HalaBuffer>,
   pub light_btlas: Option<HalaAccelerationStructure>,
 
   pub light_data: Vec<crate::scene::gpu::HalaLight>,

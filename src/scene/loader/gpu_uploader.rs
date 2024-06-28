@@ -477,7 +477,7 @@ impl HalaSceneGPUUploader {
       meshes,
       instances: None,
       tplas: None,
-      primitives: None,
+      primitives: Vec::new(),
       light_btlas: None,
       light_data: lights,
     };
@@ -615,15 +615,9 @@ impl HalaSceneGPUUploader {
     };
     instances.push(light_as_instance.as_data());
 
-    // Create primitives buffer.
-    let primitives_buffer_size = (std::mem::size_of_val(&primitives[0]) * primitives.len()) as u64;
-    let primitives_buffer = HalaBuffer::new(
-      Rc::clone(&context.logical_device),
-      primitives_buffer_size,
-      HalaBufferUsageFlags::STORAGE_BUFFER | HalaBufferUsageFlags::TRANSFER_DST,
-      HalaMemoryLocation::GpuOnly,
-      "scene.primitives_buffer",
-    )?;
+    // Perpare primitive buffers.
+    let primitives_buffer_size = std::mem::size_of_val(&primitives[0]) as u64;
+    let mut primitive_buffers = Vec::new();
 
     // Create instances buffer.
     let instances_buffer_size = (std::mem::size_of_val(&instances[0]) * instances.len()) as u64;
@@ -645,11 +639,24 @@ impl HalaSceneGPUUploader {
       HalaMemoryLocation::CpuToGpu,
       "staging.buffer")?;
 
-    // Upload the primitives buffer.
-    primitives_buffer.update_gpu_memory_with_buffer(
-      primitives.as_slice(),
-      &staging_buffer,
-      transfer_command_buffers)?;
+    // Upload the primitive buffers.
+    for primitive in primitives.iter() {
+      let primitives_buffer = HalaBuffer::new(
+        Rc::clone(&context.logical_device),
+        primitives_buffer_size,
+        HalaBufferUsageFlags::STORAGE_BUFFER | HalaBufferUsageFlags::TRANSFER_DST,
+        HalaMemoryLocation::GpuOnly,
+        "scene.primitives_buffer",
+      )?;
+
+      primitives_buffer.update_gpu_memory_with_buffer(
+        std::slice::from_ref(primitive),
+        &staging_buffer,
+        transfer_command_buffers
+      )?;
+
+      primitive_buffers.push(primitives_buffer);
+    }
 
     // Upload the instance buffer.
     instances_buffer.update_gpu_memory_with_buffer(
@@ -684,7 +691,7 @@ impl HalaSceneGPUUploader {
 
     scene_in_gpu.instances = Some(instances_buffer);
     scene_in_gpu.tplas = Some(tplas);
-    scene_in_gpu.primitives = Some(primitives_buffer);
+    scene_in_gpu.primitives = primitive_buffers;
     scene_in_gpu.light_btlas = Some(light_btlas);
 
     Ok(())
