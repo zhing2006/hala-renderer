@@ -319,7 +319,7 @@ impl HalaRendererTrait for HalaRenderer {
           (1.0, hala_gfx::HalaFrontFace::COUNTER_CLOCKWISE, hala_gfx::HalaCullModeFlags::BACK, hala_gfx::HalaPolygonMode::FILL),
           (true, true, hala_gfx::HalaCompareOp::GREATER), // We use reverse Z, so greater is less.
           &[vertex_shader, fragment_shader],
-          &[],
+          &[hala_gfx::HalaDynamicState::VIEWPORT],
           Some(&pipeline_cache),
           &format!("traditional_{}.graphics_pipeline", i),
         )?
@@ -331,29 +331,6 @@ impl HalaRendererTrait for HalaRenderer {
 
     self.dynamic_descriptor_set = Some(dynamic_descriptor_set);
     self.textures_descriptor_set = Some(textures_descriptor_set);
-
-    Ok(())
-  }
-
-  /// Check and restore the device.
-  /// param width: The width of the swapchain.
-  /// param height: The height of the swapchain.
-  /// return: The result.
-  fn check_and_restore_device(&mut self, width: u32, height: u32) -> Result<(), HalaRendererError> {
-    let mut context = self.resources.context.borrow_mut();
-
-    if self.data.is_device_lost {
-      context.reset_swapchain(width, height)?;
-
-      self.info.width = width;
-      self.info.height = height;
-
-      // TODO: Update resources.
-
-      self.statistics.reset();
-
-      self.data.is_device_lost = false;
-    }
 
     Ok(())
   }
@@ -377,6 +354,21 @@ impl HalaRendererTrait for HalaRenderer {
       &self.resources.graphics_command_buffers,
       Some(([25.0 / 255.0, 118.0 / 255.0, 210.0 / 255.0, 1.0], 0.0, 0)),  // We use reverse Z, so clear depth to 0.0.
       |index, command_buffers| {
+        command_buffers.set_viewport(
+          index,
+          0,
+          &[
+            (
+              0.,
+              self.info.height as f32,
+              self.info.width as f32,
+              -(self.info.height as f32), // For vulkan y is down.
+              0.,
+              1.
+            ),
+          ],
+        );
+
         // Render the scene.
         let scene = self.scene_in_gpu.as_ref().ok_or(hala_gfx::HalaGfxError::new("The scene in GPU is none!", None))?;
         for (mesh_index, mesh) in scene.meshes.iter().enumerate() {

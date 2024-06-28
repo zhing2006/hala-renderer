@@ -50,7 +50,6 @@ impl HalaScene {
     }?;
     scene.update_node_hierarchies();
 
-    // TODO:
     log::debug!("A HalaScene created.");
     Ok(scene)
   }
