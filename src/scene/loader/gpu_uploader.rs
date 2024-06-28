@@ -366,17 +366,18 @@ impl HalaSceneGPUUploader {
                 | hala_gfx::HalaPipelineStageFlags2::COMPUTE_SHADER
                 | hala_gfx::HalaPipelineStageFlags2::TRANSFER,
               &image_staging,
-              transfer_command_buffers)?;
+              graphics_command_buffers)?;
           },
           cpu::image_data::HalaImageDataType::FloatData(ref data) => {
             image.update_gpu_memory_with_buffer(
               data.as_slice(),
               (if use_for_mesh_shader { hala_gfx::HalaPipelineStageFlags2::TASK_SHADER_EXT | hala_gfx::HalaPipelineStageFlags2::MESH_SHADER_EXT } else { hala_gfx::HalaPipelineStageFlags2::default() })
                 | (if use_for_ray_tracing { hala_gfx::HalaPipelineStageFlags2::RAY_TRACING_SHADER } else { hala_gfx::HalaPipelineStageFlags2::default() })
+                | hala_gfx::HalaPipelineStageFlags2::VERTEX_SHADER | hala_gfx::HalaPipelineStageFlags2::FRAGMENT_SHADER
                 | hala_gfx::HalaPipelineStageFlags2::COMPUTE_SHADER
                 | hala_gfx::HalaPipelineStageFlags2::TRANSFER,
               &image_staging,
-              transfer_command_buffers)?;
+              graphics_command_buffers)?;
           }
         };
         images.push(image);
