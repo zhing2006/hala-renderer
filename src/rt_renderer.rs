@@ -59,7 +59,7 @@ pub struct HalaGlobalUniform {
   pub num_of_lights: u32,
 }
 
-/// The renderer.
+/// The ray tracing renderer.
 pub struct HalaRenderer {
   pub name: String,
   pub width: u32,
