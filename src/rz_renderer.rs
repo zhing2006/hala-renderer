@@ -138,14 +138,16 @@ impl HalaRendererTrait for HalaRenderer {
             0,
             hala_gfx::HalaDescriptorType::UNIFORM_BUFFER,
             scene.materials.len() as u32,
-            hala_gfx::HalaShaderStageFlags::VERTEX | hala_gfx::HalaShaderStageFlags::FRAGMENT | hala_gfx::HalaShaderStageFlags::COMPUTE,
+            hala_gfx::HalaShaderStageFlags::VERTEX | hala_gfx::HalaShaderStageFlags::FRAGMENT | hala_gfx::HalaShaderStageFlags::COMPUTE
+              | (if context.gpu_req.require_mesh_shader { hala_gfx::HalaShaderStageFlags::TASK | hala_gfx::HalaShaderStageFlags::MESH } else { hala_gfx::HalaShaderStageFlags::default() }),
             hala_gfx::HalaDescriptorBindingFlags::PARTIALLY_BOUND
           ),
           ( // Object uniform buffer.
             1,
             hala_gfx::HalaDescriptorType::UNIFORM_BUFFER,
             scene.meshes.len() as u32,
-            hala_gfx::HalaShaderStageFlags::VERTEX | hala_gfx::HalaShaderStageFlags::FRAGMENT | hala_gfx::HalaShaderStageFlags::COMPUTE,
+            hala_gfx::HalaShaderStageFlags::VERTEX | hala_gfx::HalaShaderStageFlags::FRAGMENT | hala_gfx::HalaShaderStageFlags::COMPUTE
+              | (if context.gpu_req.require_mesh_shader { hala_gfx::HalaShaderStageFlags::TASK | hala_gfx::HalaShaderStageFlags::MESH } else { hala_gfx::HalaShaderStageFlags::default() }),
             hala_gfx::HalaDescriptorBindingFlags::PARTIALLY_BOUND
           ),
         ],
@@ -217,7 +219,8 @@ impl HalaRendererTrait for HalaRenderer {
             hala_gfx::HalaDescriptorType::SAMPLED_IMAGE,
             scene
               .textures.len() as u32,
-            hala_gfx::HalaShaderStageFlags::VERTEX | hala_gfx::HalaShaderStageFlags::FRAGMENT | hala_gfx::HalaShaderStageFlags::COMPUTE,
+            hala_gfx::HalaShaderStageFlags::VERTEX | hala_gfx::HalaShaderStageFlags::FRAGMENT | hala_gfx::HalaShaderStageFlags::COMPUTE
+              | (if context.gpu_req.require_mesh_shader { hala_gfx::HalaShaderStageFlags::TASK | hala_gfx::HalaShaderStageFlags::MESH } else { hala_gfx::HalaShaderStageFlags::default() }),
             hala_gfx::HalaDescriptorBindingFlags::PARTIALLY_BOUND
           ),
           (
@@ -225,7 +228,8 @@ impl HalaRendererTrait for HalaRenderer {
             hala_gfx::HalaDescriptorType::SAMPLER,
             scene
               .textures.len() as u32,
-            hala_gfx::HalaShaderStageFlags::VERTEX | hala_gfx::HalaShaderStageFlags::FRAGMENT | hala_gfx::HalaShaderStageFlags::COMPUTE,
+            hala_gfx::HalaShaderStageFlags::VERTEX | hala_gfx::HalaShaderStageFlags::FRAGMENT | hala_gfx::HalaShaderStageFlags::COMPUTE
+              | (if context.gpu_req.require_mesh_shader { hala_gfx::HalaShaderStageFlags::TASK | hala_gfx::HalaShaderStageFlags::MESH } else { hala_gfx::HalaShaderStageFlags::default() }),
             hala_gfx::HalaDescriptorBindingFlags::PARTIALLY_BOUND
           ),
         ],
@@ -308,7 +312,8 @@ impl HalaRendererTrait for HalaRenderer {
           ],
           &[
             hala_gfx::HalaPushConstantRange {
-              stage_flags: hala_gfx::HalaShaderStageFlags::VERTEX | hala_gfx::HalaShaderStageFlags::FRAGMENT,
+              stage_flags: hala_gfx::HalaShaderStageFlags::VERTEX | hala_gfx::HalaShaderStageFlags::FRAGMENT
+                | (if context.gpu_req.require_mesh_shader { hala_gfx::HalaShaderStageFlags::TASK | hala_gfx::HalaShaderStageFlags::MESH } else { hala_gfx::HalaShaderStageFlags::default() }),
               offset: 0,
               size: 8,  // Mesh index, Material index.
             },
@@ -400,7 +405,8 @@ impl HalaRendererTrait for HalaRenderer {
             command_buffers.push_constants(
               index,
               &self.pso[material_type],
-              hala_gfx::HalaShaderStageFlags::VERTEX | hala_gfx::HalaShaderStageFlags::FRAGMENT,
+              hala_gfx::HalaShaderStageFlags::VERTEX | hala_gfx::HalaShaderStageFlags::FRAGMENT
+                | (if context.gpu_req.require_mesh_shader { hala_gfx::HalaShaderStageFlags::TASK | hala_gfx::HalaShaderStageFlags::MESH } else { hala_gfx::HalaShaderStageFlags::default() }),
               0,
               push_constants.as_slice(),
             );
@@ -535,21 +541,24 @@ impl HalaRenderer {
             0,
             hala_gfx::HalaDescriptorType::UNIFORM_BUFFER,
             1,
-            hala_gfx::HalaShaderStageFlags::VERTEX | hala_gfx::HalaShaderStageFlags::FRAGMENT | hala_gfx::HalaShaderStageFlags::COMPUTE,
+            hala_gfx::HalaShaderStageFlags::VERTEX | hala_gfx::HalaShaderStageFlags::FRAGMENT | hala_gfx::HalaShaderStageFlags::COMPUTE
+              | (if resources.context.borrow().gpu_req.require_mesh_shader { hala_gfx::HalaShaderStageFlags::TASK | hala_gfx::HalaShaderStageFlags::MESH } else { hala_gfx::HalaShaderStageFlags::default() }),
             hala_gfx::HalaDescriptorBindingFlags::PARTIALLY_BOUND
           ),
           ( // Cameras uniform buffer.
             1,
             hala_gfx::HalaDescriptorType::UNIFORM_BUFFER,
             1,
-            hala_gfx::HalaShaderStageFlags::VERTEX | hala_gfx::HalaShaderStageFlags::FRAGMENT | hala_gfx::HalaShaderStageFlags::COMPUTE,
+            hala_gfx::HalaShaderStageFlags::VERTEX | hala_gfx::HalaShaderStageFlags::FRAGMENT | hala_gfx::HalaShaderStageFlags::COMPUTE
+              | (if resources.context.borrow().gpu_req.require_mesh_shader { hala_gfx::HalaShaderStageFlags::TASK | hala_gfx::HalaShaderStageFlags::MESH } else { hala_gfx::HalaShaderStageFlags::default() }),
             hala_gfx::HalaDescriptorBindingFlags::PARTIALLY_BOUND
           ),
           ( // Lights uniform buffer.
             2,
             hala_gfx::HalaDescriptorType::UNIFORM_BUFFER,
             1,
-            hala_gfx::HalaShaderStageFlags::VERTEX | hala_gfx::HalaShaderStageFlags::FRAGMENT | hala_gfx::HalaShaderStageFlags::COMPUTE,
+            hala_gfx::HalaShaderStageFlags::VERTEX | hala_gfx::HalaShaderStageFlags::FRAGMENT | hala_gfx::HalaShaderStageFlags::COMPUTE
+              | (if resources.context.borrow().gpu_req.require_mesh_shader { hala_gfx::HalaShaderStageFlags::TASK | hala_gfx::HalaShaderStageFlags::MESH } else { hala_gfx::HalaShaderStageFlags::default() }),
             hala_gfx::HalaDescriptorBindingFlags::PARTIALLY_BOUND
           ),
         ],
