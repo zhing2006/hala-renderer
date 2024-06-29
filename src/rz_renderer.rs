@@ -1,6 +1,6 @@
 use std::rc::Rc;
 
-use hala_gfx::HalaGPURequirements;
+use hala_gfx::{HalaGPURequirements, HalaShader};
 
 use crate::error::HalaRendererError;
 use crate::scene::{
@@ -139,7 +139,7 @@ impl HalaRendererTrait for HalaRenderer {
             hala_gfx::HalaDescriptorType::UNIFORM_BUFFER,
             scene.materials.len() as u32,
             hala_gfx::HalaShaderStageFlags::VERTEX | hala_gfx::HalaShaderStageFlags::FRAGMENT | hala_gfx::HalaShaderStageFlags::COMPUTE
-              | (if context.gpu_req.require_mesh_shader { hala_gfx::HalaShaderStageFlags::TASK | hala_gfx::HalaShaderStageFlags::MESH } else { hala_gfx::HalaShaderStageFlags::default() }),
+              | (if self.use_mesh_shader { hala_gfx::HalaShaderStageFlags::TASK | hala_gfx::HalaShaderStageFlags::MESH } else { hala_gfx::HalaShaderStageFlags::default() }),
             hala_gfx::HalaDescriptorBindingFlags::PARTIALLY_BOUND
           ),
           ( // Object uniform buffer.
@@ -147,7 +147,7 @@ impl HalaRendererTrait for HalaRenderer {
             hala_gfx::HalaDescriptorType::UNIFORM_BUFFER,
             scene.meshes.len() as u32,
             hala_gfx::HalaShaderStageFlags::VERTEX | hala_gfx::HalaShaderStageFlags::FRAGMENT | hala_gfx::HalaShaderStageFlags::COMPUTE
-              | (if context.gpu_req.require_mesh_shader { hala_gfx::HalaShaderStageFlags::TASK | hala_gfx::HalaShaderStageFlags::MESH } else { hala_gfx::HalaShaderStageFlags::default() }),
+              | (if self.use_mesh_shader { hala_gfx::HalaShaderStageFlags::TASK | hala_gfx::HalaShaderStageFlags::MESH } else { hala_gfx::HalaShaderStageFlags::default() }),
             hala_gfx::HalaDescriptorBindingFlags::PARTIALLY_BOUND
           ),
         ],
@@ -219,8 +219,8 @@ impl HalaRendererTrait for HalaRenderer {
             hala_gfx::HalaDescriptorType::SAMPLED_IMAGE,
             scene
               .textures.len() as u32,
-            hala_gfx::HalaShaderStageFlags::VERTEX | hala_gfx::HalaShaderStageFlags::FRAGMENT | hala_gfx::HalaShaderStageFlags::COMPUTE
-              | (if context.gpu_req.require_mesh_shader { hala_gfx::HalaShaderStageFlags::TASK | hala_gfx::HalaShaderStageFlags::MESH } else { hala_gfx::HalaShaderStageFlags::default() }),
+            hala_gfx::HalaShaderStageFlags::FRAGMENT | hala_gfx::HalaShaderStageFlags::COMPUTE
+              | (if self.use_mesh_shader { hala_gfx::HalaShaderStageFlags::TASK | hala_gfx::HalaShaderStageFlags::MESH } else { hala_gfx::HalaShaderStageFlags::VERTEX }),
             hala_gfx::HalaDescriptorBindingFlags::PARTIALLY_BOUND
           ),
           (
@@ -228,8 +228,8 @@ impl HalaRendererTrait for HalaRenderer {
             hala_gfx::HalaDescriptorType::SAMPLER,
             scene
               .textures.len() as u32,
-            hala_gfx::HalaShaderStageFlags::VERTEX | hala_gfx::HalaShaderStageFlags::FRAGMENT | hala_gfx::HalaShaderStageFlags::COMPUTE
-              | (if context.gpu_req.require_mesh_shader { hala_gfx::HalaShaderStageFlags::TASK | hala_gfx::HalaShaderStageFlags::MESH } else { hala_gfx::HalaShaderStageFlags::default() }),
+            hala_gfx::HalaShaderStageFlags::FRAGMENT | hala_gfx::HalaShaderStageFlags::COMPUTE
+              | (if self.use_mesh_shader { hala_gfx::HalaShaderStageFlags::TASK | hala_gfx::HalaShaderStageFlags::MESH } else { hala_gfx::HalaShaderStageFlags::VERTEX }),
             hala_gfx::HalaDescriptorBindingFlags::PARTIALLY_BOUND
           ),
         ],
@@ -270,8 +270,27 @@ impl HalaRendererTrait for HalaRenderer {
       )?
     };
 
-    // Create traditional graphics pipelines.
-    for (i, (vertex_shader, fragment_shader)) in self.traditional_shaders.iter().enumerate() {
+    let mut used_shader_list: Vec<Vec<&HalaShader>> = Vec::new();
+    if self.use_mesh_shader {
+      // Collect modern graphics shaders.
+      for (task_shader, mesh_shader, fragment_shader) in self.shaders.iter() {
+        let mut shaders = Vec::with_capacity(3);
+        if let Some(task_shader) = task_shader {
+          shaders.push(task_shader.as_ref());
+        }
+        shaders.push(mesh_shader.as_ref());
+        shaders.push(fragment_shader.as_ref());
+        used_shader_list.push(shaders);
+      }
+    } else {
+      // Collect traditional graphics shaders.
+      for shaders in self.traditional_shaders.iter() {
+        used_shader_list.push(vec![shaders.0.as_ref(), shaders.1.as_ref()])
+      }
+    }
+
+    // Create graphics pipelines.
+    for (i, shaders) in used_shader_list.iter().enumerate() {
       self.pso.push(
         hala_gfx::HalaGraphicsPipeline::new(
           Rc::clone(&context.logical_device),
@@ -312,8 +331,8 @@ impl HalaRendererTrait for HalaRenderer {
           ],
           &[
             hala_gfx::HalaPushConstantRange {
-              stage_flags: hala_gfx::HalaShaderStageFlags::VERTEX | hala_gfx::HalaShaderStageFlags::FRAGMENT
-                | (if context.gpu_req.require_mesh_shader { hala_gfx::HalaShaderStageFlags::TASK | hala_gfx::HalaShaderStageFlags::MESH } else { hala_gfx::HalaShaderStageFlags::default() }),
+              stage_flags: hala_gfx::HalaShaderStageFlags::FRAGMENT
+                | (if self.use_mesh_shader { hala_gfx::HalaShaderStageFlags::TASK | hala_gfx::HalaShaderStageFlags::MESH } else { hala_gfx::HalaShaderStageFlags::VERTEX }),
               offset: 0,
               size: 8,  // Mesh index, Material index.
             },
@@ -323,10 +342,14 @@ impl HalaRendererTrait for HalaRenderer {
           (hala_gfx::HalaBlendFactor::ONE, hala_gfx::HalaBlendFactor::ZERO, hala_gfx::HalaBlendOp::ADD),
           (1.0, hala_gfx::HalaFrontFace::COUNTER_CLOCKWISE, hala_gfx::HalaCullModeFlags::BACK, hala_gfx::HalaPolygonMode::FILL),
           (true, true, hala_gfx::HalaCompareOp::GREATER), // We use reverse Z, so greater is less.
-          &[vertex_shader, fragment_shader],
+          &shaders.as_slice(),
           &[hala_gfx::HalaDynamicState::VIEWPORT],
           Some(&pipeline_cache),
-          &format!("traditional_{}.graphics_pipeline", i),
+          &if self.use_mesh_shader {
+            format!("modern_{}.graphics_pipeline", i)
+          } else {
+            format!("traditional_{}.graphics_pipeline", i)
+          },
         )?
       );
     }
@@ -405,8 +428,8 @@ impl HalaRendererTrait for HalaRenderer {
             command_buffers.push_constants(
               index,
               &self.pso[material_type],
-              hala_gfx::HalaShaderStageFlags::VERTEX | hala_gfx::HalaShaderStageFlags::FRAGMENT
-                | (if context.gpu_req.require_mesh_shader { hala_gfx::HalaShaderStageFlags::TASK | hala_gfx::HalaShaderStageFlags::MESH } else { hala_gfx::HalaShaderStageFlags::default() }),
+              if !self.use_mesh_shader { hala_gfx::HalaShaderStageFlags::VERTEX } else { hala_gfx::HalaShaderStageFlags::TASK | hala_gfx::HalaShaderStageFlags::MESH }
+                | hala_gfx::HalaShaderStageFlags::FRAGMENT,
               0,
               push_constants.as_slice(),
             );
@@ -426,13 +449,23 @@ impl HalaRendererTrait for HalaRenderer {
               hala_gfx::HalaIndexType::UINT32);
 
             // Draw.
-            command_buffers.draw_indexed(
-              index,
-              primitive.index_count,
-              1,
-              0,
-              0,
-              0);
+            if !self.use_mesh_shader {
+              command_buffers.draw_indexed(
+                index,
+                primitive.index_count,
+                1,
+                0,
+                0,
+                0
+              );
+            } else {
+              command_buffers.draw_mesh_tasks(
+                index,
+                1,
+                1,
+                1,
+              );
+            }
           }
         }
 
@@ -541,24 +574,24 @@ impl HalaRenderer {
             0,
             hala_gfx::HalaDescriptorType::UNIFORM_BUFFER,
             1,
-            hala_gfx::HalaShaderStageFlags::VERTEX | hala_gfx::HalaShaderStageFlags::FRAGMENT | hala_gfx::HalaShaderStageFlags::COMPUTE
-              | (if resources.context.borrow().gpu_req.require_mesh_shader { hala_gfx::HalaShaderStageFlags::TASK | hala_gfx::HalaShaderStageFlags::MESH } else { hala_gfx::HalaShaderStageFlags::default() }),
+            hala_gfx::HalaShaderStageFlags::FRAGMENT | hala_gfx::HalaShaderStageFlags::COMPUTE
+              | (if resources.context.borrow().gpu_req.require_mesh_shader { hala_gfx::HalaShaderStageFlags::TASK | hala_gfx::HalaShaderStageFlags::MESH } else { hala_gfx::HalaShaderStageFlags::VERTEX }),
             hala_gfx::HalaDescriptorBindingFlags::PARTIALLY_BOUND
           ),
           ( // Cameras uniform buffer.
             1,
             hala_gfx::HalaDescriptorType::UNIFORM_BUFFER,
             1,
-            hala_gfx::HalaShaderStageFlags::VERTEX | hala_gfx::HalaShaderStageFlags::FRAGMENT | hala_gfx::HalaShaderStageFlags::COMPUTE
-              | (if resources.context.borrow().gpu_req.require_mesh_shader { hala_gfx::HalaShaderStageFlags::TASK | hala_gfx::HalaShaderStageFlags::MESH } else { hala_gfx::HalaShaderStageFlags::default() }),
+            hala_gfx::HalaShaderStageFlags::FRAGMENT | hala_gfx::HalaShaderStageFlags::COMPUTE
+              | (if resources.context.borrow().gpu_req.require_mesh_shader { hala_gfx::HalaShaderStageFlags::TASK | hala_gfx::HalaShaderStageFlags::MESH } else { hala_gfx::HalaShaderStageFlags::VERTEX }),
             hala_gfx::HalaDescriptorBindingFlags::PARTIALLY_BOUND
           ),
           ( // Lights uniform buffer.
             2,
             hala_gfx::HalaDescriptorType::UNIFORM_BUFFER,
             1,
-            hala_gfx::HalaShaderStageFlags::VERTEX | hala_gfx::HalaShaderStageFlags::FRAGMENT | hala_gfx::HalaShaderStageFlags::COMPUTE
-              | (if resources.context.borrow().gpu_req.require_mesh_shader { hala_gfx::HalaShaderStageFlags::TASK | hala_gfx::HalaShaderStageFlags::MESH } else { hala_gfx::HalaShaderStageFlags::default() }),
+            hala_gfx::HalaShaderStageFlags::FRAGMENT | hala_gfx::HalaShaderStageFlags::COMPUTE
+              | (if resources.context.borrow().gpu_req.require_mesh_shader { hala_gfx::HalaShaderStageFlags::TASK | hala_gfx::HalaShaderStageFlags::MESH } else { hala_gfx::HalaShaderStageFlags::VERTEX }),
             hala_gfx::HalaDescriptorBindingFlags::PARTIALLY_BOUND
           ),
         ],
@@ -616,6 +649,8 @@ impl HalaRenderer {
     fragment_file_path: &str,
     debug_name: &str) -> Result<(), HalaRendererError>
   {
+    assert!(self.use_mesh_shader == false, "The renderer is not support mesh shader!");
+
     let context = self.resources.context.borrow();
 
     let vertex_shader = hala_gfx::HalaShader::with_file(
@@ -652,6 +687,8 @@ impl HalaRenderer {
     fragment_file_path: &str,
     debug_name: &str) -> Result<(), HalaRendererError>
   {
+    assert!(self.use_mesh_shader == true, "The renderer is not support traditional shader!");
+
     let context = self.resources.context.borrow();
 
     let task_shader = match task_file_path {
