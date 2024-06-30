@@ -1,5 +1,6 @@
 /// The vertex.
 #[repr(C, align(4))]
+#[derive(Debug, Copy, Clone)]
 pub struct HalaVertex {
   pub position: [f32; 3],
   pub normal: [f32; 3],

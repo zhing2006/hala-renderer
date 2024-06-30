@@ -301,6 +301,9 @@ impl HalaGltfLoader {
         indices,
         vertices,
         material_index,
+        meshlets: Vec::new(),
+        meshlet_vertices: Vec::new(),
+        meshlet_primitives: Vec::new(),
       });
     }
 

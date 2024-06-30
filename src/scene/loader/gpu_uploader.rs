@@ -2,7 +2,6 @@ use std::rc::Rc;
 
 use glam::Vec4Swizzles;
 
-use hala_gfx::HalaCommandBufferSet;
 use hala_gfx::{
   HalaContext,
   HalaBuffer,
@@ -22,12 +21,16 @@ use hala_gfx::{
   HalaAccelerationStructureInstance,
   HalaAccelerationStructureGeometryInstancesData,
   HalaAccelerationStructureBuildRangeInfo,
+  HalaCommandBufferSet,
   HalaAABB,
 };
 
 use crate::{
   error::HalaRendererError,
-  scene::HalaVertex,
+  scene::{
+    HalaVertex,
+    HalaMeshlet,
+  },
 };
 use super::super::cpu;
 use super::super::gpu;
@@ -52,7 +55,7 @@ impl HalaSceneGPUUploader {
     context: &HalaContext,
     graphics_command_buffers: &HalaCommandBufferSet,
     transfer_command_buffers: &HalaCommandBufferSet,
-    scene_in_cpu: &cpu::HalaScene,
+    scene_in_cpu: &mut cpu::HalaScene,
     use_for_mesh_shader: bool,
     use_for_ray_tracing: bool,
   ) -> Result<gpu::HalaScene, HalaRendererError> {
@@ -447,6 +450,10 @@ impl HalaSceneGPUUploader {
           vertex_count: prim.vertices.len() as u32,
           index_count: prim.indices.len() as u32,
           material_index,
+          meshlet_count: 0u32,
+          meshlet_buffer: None,
+          meshlet_vertex_buffers: Vec::new(),
+          meshlet_primitive_buffers: Vec::new(),
           btlas: None,
         });
       }
@@ -486,6 +493,16 @@ impl HalaSceneGPUUploader {
       light_data: lights,
     };
 
+    if use_for_mesh_shader {
+      Self::additively_upload_for_mesh_shader(
+        context,
+        graphics_command_buffers,
+        transfer_command_buffers,
+        scene_in_cpu,
+        &mut scene_in_gpu,
+      )?;
+    }
+
     if use_for_ray_tracing {
       Self::additively_upload_for_ray_tracing(
         context,
@@ -497,6 +514,152 @@ impl HalaSceneGPUUploader {
     }
 
     Ok(scene_in_gpu)
+  }
+
+  /// Additively upload the scene to the GPU from the CPU for mesh shader.
+  /// param context: The gfx context.
+  /// param graphics_command_buffers: The graphics command buffers.
+  /// param transfer_command_buffers: The transfer command buffers.
+  /// param scene_in_cpu: The scene in the CPU.
+  /// param scene_in_gpu: The scene in the GPU.
+  /// return: The result.
+  fn additively_upload_for_mesh_shader(
+    context: &HalaContext,
+    _graphics_command_buffers: &HalaCommandBufferSet,
+    transfer_command_buffers: &HalaCommandBufferSet,
+    scene_in_cpu: &mut cpu::HalaScene,
+    scene_in_gpu: &mut gpu::HalaScene,
+  ) -> Result<(), HalaRendererError> {
+    let mut staging_buffer_size = 0u64;
+
+    for mesh_in_cpu in scene_in_cpu.meshes.iter_mut() {
+      for prim_in_cpu in mesh_in_cpu.primitives.iter_mut() {
+        let vertex_data_adapter = unsafe {
+          meshopt::VertexDataAdapter::new(
+            std::slice::from_raw_parts(prim_in_cpu.vertices.as_ptr() as *const u8, prim_in_cpu.vertices.len() * std::mem::size_of::<HalaVertex>()),
+            std::mem::size_of::<HalaVertex>() as usize,
+            0,
+          ).map_err(|err| HalaRendererError::new("Failed to create vertex data adapter.", Some(Box::new(err))))?
+        };
+        let meshlets_in_cpu = meshopt::clusterize::build_meshlets(
+          prim_in_cpu.indices.as_slice(),
+          &vertex_data_adapter,
+          64,
+          124,
+          0.5,
+        );
+        for meshlet_in_cpu in meshlets_in_cpu.iter() {
+          let bounds = meshopt::clusterize::compute_meshlet_bounds(
+            meshlet_in_cpu,
+            &vertex_data_adapter,
+          );
+
+          let meshlet = HalaMeshlet {
+            center: bounds.center.into(),
+            radius: bounds.radius,
+            cone_apex: bounds.cone_apex.into(),
+            cone_axis: bounds.cone_axis.into(),
+            num_of_vertices: meshlet_in_cpu.vertices.len() as u32,
+            num_of_triangles: meshlet_in_cpu.triangles.len() as u32,
+          };
+
+          prim_in_cpu.meshlets.push(meshlet);
+          prim_in_cpu.meshlet_vertices.push(meshlet_in_cpu.vertices.to_vec());
+          prim_in_cpu.meshlet_primitives.push(meshlet_in_cpu.triangles.to_vec());
+        }
+
+        let meshlet_buffer_size = (std::mem::size_of::<HalaMeshlet>() * prim_in_cpu.meshlets.len()) as u64;
+        let meshlet_vertex_buffer_size = (std::mem::size_of::<u32>() * meshlets_in_cpu.vertices.len()) as u64;
+        let meshlet_primitive_buffer_size = (std::mem::size_of::<u8>() * meshlets_in_cpu.triangles.len()) as u64;
+        staging_buffer_size = std::cmp::max(
+          staging_buffer_size,
+          std::cmp::max(
+            meshlet_buffer_size,
+            std::cmp::max(
+              meshlet_vertex_buffer_size,
+              meshlet_primitive_buffer_size
+            )
+          )
+        );
+      }
+    }
+
+    // Create staging buffer.
+    let staging_buffer = HalaBuffer::new(
+      Rc::clone(&context.logical_device),
+      staging_buffer_size,
+      HalaBufferUsageFlags::TRANSFER_SRC,
+      HalaMemoryLocation::CpuToGpu,
+      "staging.buffer")?;
+
+    // Create meshlet buffers.
+    for (mesh_index, mesh) in scene_in_gpu.meshes.iter_mut().enumerate() {
+      let mesh_in_cpu = &scene_in_cpu.meshes[mesh_index];
+      for (prim_index, prim) in mesh.primitives.iter_mut().enumerate() {
+        let prim_in_cpu = &mesh_in_cpu.primitives[prim_index];
+
+        prim.meshlet_count = prim_in_cpu.meshlets.len() as u32;
+
+        let meshlet_buffer_size = (std::mem::size_of::<HalaMeshlet>() * prim_in_cpu.meshlets.len()) as u64;
+        let meshlet_buffer = HalaBuffer::new(
+          Rc::clone(&context.logical_device),
+          meshlet_buffer_size,
+          HalaBufferUsageFlags::SHADER_DEVICE_ADDRESS
+            | HalaBufferUsageFlags::UNIFORM_BUFFER
+            | HalaBufferUsageFlags::TRANSFER_DST,
+          HalaMemoryLocation::GpuOnly,
+          &format!("meshlet_info_{}_{}.buffer", mesh_index, prim_index)
+        )?;
+        meshlet_buffer.update_gpu_memory_with_buffer(
+          prim_in_cpu.meshlets.as_slice(),
+          &staging_buffer,
+          transfer_command_buffers)?;
+
+        prim.meshlet_buffer = Some(meshlet_buffer);
+
+        // Create meshlet vertex buffers.
+        for (buffer_index, meshlet_vertices_in_cpu) in prim_in_cpu.meshlet_vertices.iter().enumerate() {
+          let meshlet_vertex_buffer_size = (std::mem::size_of::<u32>() * meshlet_vertices_in_cpu.len()) as u64;
+          let meshlet_vertex_buffer = HalaBuffer::new(
+            Rc::clone(&context.logical_device),
+            meshlet_vertex_buffer_size,
+            HalaBufferUsageFlags::SHADER_DEVICE_ADDRESS
+              | HalaBufferUsageFlags::STORAGE_BUFFER
+              | HalaBufferUsageFlags::TRANSFER_DST,
+            HalaMemoryLocation::GpuOnly,
+            &format!("meshlet_vertex_{}_{}_{}.buffer", mesh_index, prim_index, buffer_index)
+          )?;
+          meshlet_vertex_buffer.update_gpu_memory_with_buffer(
+            meshlet_vertices_in_cpu.as_slice(),
+            &staging_buffer,
+            transfer_command_buffers)?;
+
+          prim.meshlet_vertex_buffers.push(meshlet_vertex_buffer);
+        }
+
+        // Create meshlet primitive buffers.
+        for (buffer_index, meshlet_primitives_in_cpu) in prim_in_cpu.meshlet_primitives.iter().enumerate() {
+          let meshlet_primitive_buffer_size = (std::mem::size_of::<u8>() * meshlet_primitives_in_cpu.len()) as u64;
+          let meshlet_primitive_buffer = HalaBuffer::new(
+            Rc::clone(&context.logical_device),
+            meshlet_primitive_buffer_size,
+            HalaBufferUsageFlags::SHADER_DEVICE_ADDRESS
+              | HalaBufferUsageFlags::STORAGE_BUFFER
+              | HalaBufferUsageFlags::TRANSFER_DST,
+            HalaMemoryLocation::GpuOnly,
+            &format!("meshlet_primitive_{}_{}_{}.buffer", mesh_index, prim_index, buffer_index)
+          )?;
+          meshlet_primitive_buffer.update_gpu_memory_with_buffer(
+            meshlet_primitives_in_cpu.as_slice(),
+            &staging_buffer,
+            transfer_command_buffers)?;
+
+          prim.meshlet_primitive_buffers.push(meshlet_primitive_buffer);
+        }
+      }
+    }
+
+    Ok(())
   }
 
   /// Additively upload the scene to the GPU from the CPU for ray tracing.

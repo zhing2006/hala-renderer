@@ -1170,7 +1170,7 @@ impl HalaRenderer {
   /// Set the scene to be rendered.
   /// param scene_in_cpu: The scene in the CPU.
   /// return: The result.
-  pub fn set_scene(&mut self, scene_in_cpu: &cpu::HalaScene) -> Result<(), HalaRendererError> {
+  pub fn set_scene(&mut self, scene_in_cpu: &mut cpu::HalaScene) -> Result<(), HalaRendererError> {
     let context = self.resources.context.borrow();
     // Release the old scene in the GPU.
     self.scene_in_gpu = None;

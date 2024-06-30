@@ -370,7 +370,7 @@ impl HalaRendererTrait for HalaRenderer {
               stage_flags: hala_gfx::HalaShaderStageFlags::FRAGMENT
                 | (if self.use_mesh_shader { hala_gfx::HalaShaderStageFlags::TASK | hala_gfx::HalaShaderStageFlags::MESH } else { hala_gfx::HalaShaderStageFlags::VERTEX }),
               offset: 0,
-              size: 12,  // Mesh index, Material index and Primitive index.
+              size: 12, // Mesh index, Material index and Primitive index.
             },
           ],
           hala_gfx::HalaPrimitiveTopology::TRIANGLE_LIST,
@@ -499,7 +499,7 @@ impl HalaRendererTrait for HalaRenderer {
             } else {
               command_buffers.draw_mesh_tasks(
                 index,
-                1,
+                primitive.meshlet_count,
                 1,
                 1,
               );
@@ -790,7 +790,7 @@ impl HalaRenderer {
   /// Set the scene to be rendered.
   /// param scene_in_cpu: The scene in the CPU.
   /// return: The result.
-  pub fn set_scene(&mut self, scene_in_cpu: &cpu::HalaScene) -> Result<(), HalaRendererError> {
+  pub fn set_scene(&mut self, scene_in_cpu: &mut cpu::HalaScene) -> Result<(), HalaRendererError> {
     let context = self.resources.context.borrow();
     // Release the old scene in the GPU.
     self.scene_in_gpu = None;
