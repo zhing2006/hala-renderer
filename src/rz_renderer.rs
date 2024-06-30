@@ -127,6 +127,16 @@ impl HalaRendererTrait for HalaRenderer {
       vp_mtx: scene.camera_proj_matrices[0] * scene.camera_view_matrices[0],
     }])?;
 
+    // Collect vertex and index buffers.
+    let mut vertex_buffers = Vec::new();
+    let mut index_buffers = Vec::new();
+    for mesh in scene.meshes.iter() {
+      for primitive in mesh.primitives.iter() {
+        vertex_buffers.push(primitive.vertex_buffer.as_ref());
+        index_buffers.push(primitive.index_buffer.as_ref());
+      }
+    }
+
     // Create dynamic descriptor set.
     let dynamic_descriptor_set = hala_gfx::HalaDescriptorSet::new(
       Rc::clone(&context.logical_device),
@@ -134,20 +144,36 @@ impl HalaRendererTrait for HalaRenderer {
       hala_gfx::HalaDescriptorSetLayout::new(
         Rc::clone(&context.logical_device),
         &[
-          ( // Materials uniform buffer.
+          ( // Materials uniform buffers.
             0,
             hala_gfx::HalaDescriptorType::UNIFORM_BUFFER,
             scene.materials.len() as u32,
-            hala_gfx::HalaShaderStageFlags::VERTEX | hala_gfx::HalaShaderStageFlags::FRAGMENT | hala_gfx::HalaShaderStageFlags::COMPUTE
-              | (if self.use_mesh_shader { hala_gfx::HalaShaderStageFlags::TASK | hala_gfx::HalaShaderStageFlags::MESH } else { hala_gfx::HalaShaderStageFlags::default() }),
+            hala_gfx::HalaShaderStageFlags::FRAGMENT | hala_gfx::HalaShaderStageFlags::COMPUTE
+              | (if self.use_mesh_shader { hala_gfx::HalaShaderStageFlags::TASK | hala_gfx::HalaShaderStageFlags::MESH } else { hala_gfx::HalaShaderStageFlags::VERTEX }),
             hala_gfx::HalaDescriptorBindingFlags::PARTIALLY_BOUND
           ),
-          ( // Object uniform buffer.
+          ( // Object uniform buffers.
             1,
             hala_gfx::HalaDescriptorType::UNIFORM_BUFFER,
             scene.meshes.len() as u32,
-            hala_gfx::HalaShaderStageFlags::VERTEX | hala_gfx::HalaShaderStageFlags::FRAGMENT | hala_gfx::HalaShaderStageFlags::COMPUTE
-              | (if self.use_mesh_shader { hala_gfx::HalaShaderStageFlags::TASK | hala_gfx::HalaShaderStageFlags::MESH } else { hala_gfx::HalaShaderStageFlags::default() }),
+            hala_gfx::HalaShaderStageFlags::FRAGMENT | hala_gfx::HalaShaderStageFlags::COMPUTE
+              | (if self.use_mesh_shader { hala_gfx::HalaShaderStageFlags::TASK | hala_gfx::HalaShaderStageFlags::MESH } else { hala_gfx::HalaShaderStageFlags::VERTEX }),
+            hala_gfx::HalaDescriptorBindingFlags::PARTIALLY_BOUND
+          ),
+          ( // Vertex storage buffers.
+            2,
+            hala_gfx::HalaDescriptorType::STORAGE_BUFFER,
+            vertex_buffers.len() as u32,
+            hala_gfx::HalaShaderStageFlags::FRAGMENT | hala_gfx::HalaShaderStageFlags::COMPUTE
+              | (if self.use_mesh_shader { hala_gfx::HalaShaderStageFlags::TASK | hala_gfx::HalaShaderStageFlags::MESH } else { hala_gfx::HalaShaderStageFlags::VERTEX }),
+            hala_gfx::HalaDescriptorBindingFlags::PARTIALLY_BOUND
+          ),
+          ( // Index storage buffers.
+            3,
+            hala_gfx::HalaDescriptorType::STORAGE_BUFFER,
+            index_buffers.len() as u32,
+            hala_gfx::HalaShaderStageFlags::FRAGMENT | hala_gfx::HalaShaderStageFlags::COMPUTE
+              | (if self.use_mesh_shader { hala_gfx::HalaShaderStageFlags::TASK | hala_gfx::HalaShaderStageFlags::MESH } else { hala_gfx::HalaShaderStageFlags::VERTEX }),
             hala_gfx::HalaDescriptorBindingFlags::PARTIALLY_BOUND
           ),
         ],
@@ -199,6 +225,16 @@ impl HalaRendererTrait for HalaRenderer {
         index,
         1,
         self.object_uniform_buffers.iter().map(|buffers| &buffers[index]).collect::<Vec<_>>().as_slice(),
+      );
+      dynamic_descriptor_set.update_storage_buffers(
+        index,
+        2,
+        vertex_buffers.as_slice(),
+      );
+      dynamic_descriptor_set.update_storage_buffers(
+        index,
+        3,
+        index_buffers.as_slice(),
       );
     }
 
@@ -334,7 +370,7 @@ impl HalaRendererTrait for HalaRenderer {
               stage_flags: hala_gfx::HalaShaderStageFlags::FRAGMENT
                 | (if self.use_mesh_shader { hala_gfx::HalaShaderStageFlags::TASK | hala_gfx::HalaShaderStageFlags::MESH } else { hala_gfx::HalaShaderStageFlags::VERTEX }),
               offset: 0,
-              size: 8,  // Mesh index, Material index.
+              size: 12,  // Mesh index, Material index and Primitive index.
             },
           ],
           hala_gfx::HalaPrimitiveTopology::TRIANGLE_LIST,
@@ -398,6 +434,7 @@ impl HalaRendererTrait for HalaRenderer {
         );
 
         // Render the scene.
+        let mut primitive_index = 0u32;
         let scene = self.scene_in_gpu.as_ref().ok_or(hala_gfx::HalaGfxError::new("The scene in GPU is none!", None))?;
         for (mesh_index, mesh) in scene.meshes.iter().enumerate() {
           for primitive in mesh.primitives.iter() {
@@ -425,6 +462,7 @@ impl HalaRendererTrait for HalaRenderer {
             let mut push_constants = Vec::new();
             push_constants.extend_from_slice(&(mesh_index as u32).to_le_bytes());
             push_constants.extend_from_slice(&primitive.material_index.to_le_bytes());
+            push_constants.extend_from_slice(&primitive_index.to_le_bytes());
             command_buffers.push_constants(
               index,
               &self.pso[material_type],
@@ -466,6 +504,8 @@ impl HalaRendererTrait for HalaRenderer {
                 1,
               );
             }
+
+            primitive_index += 1;
           }
         }
 
