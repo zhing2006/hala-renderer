@@ -7,5 +7,7 @@ pub struct HalaMeshlet {
   pub cone_apex: [f32; 3],
   pub num_of_vertices: u32,
   pub cone_axis: [f32; 3],
-  pub num_of_triangles: u32,
+  pub num_of_primitives: u32,
+  pub offset_of_vertices: u32,
+  pub offset_of_primitives: u32,
 }

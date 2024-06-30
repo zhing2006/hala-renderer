@@ -13,8 +13,8 @@ pub struct HalaPrimitive {
 
   pub meshlet_count: u32,
   pub meshlet_buffer: Option<HalaBuffer>,
-  pub meshlet_vertex_buffers: Vec<HalaBuffer>,
-  pub meshlet_primitive_buffers: Vec<HalaBuffer>,
+  pub meshlet_vertex_buffer: Option<HalaBuffer>,
+  pub meshlet_primitive_buffer: Option<HalaBuffer>,
 
   pub btlas: Option<HalaAccelerationStructure>,
 }

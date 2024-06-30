@@ -452,8 +452,8 @@ impl HalaSceneGPUUploader {
           material_index,
           meshlet_count: 0u32,
           meshlet_buffer: None,
-          meshlet_vertex_buffers: Vec::new(),
-          meshlet_primitive_buffers: Vec::new(),
+          meshlet_vertex_buffer: None,
+          meshlet_primitive_buffer: None,
           btlas: None,
         });
       }
@@ -548,25 +548,37 @@ impl HalaSceneGPUUploader {
           124,
           0.5,
         );
+        let vertices_start = meshlets_in_cpu.vertices.as_ptr();
+        let primitives_start = meshlets_in_cpu.triangles.as_ptr();
         for meshlet_in_cpu in meshlets_in_cpu.iter() {
           let bounds = meshopt::clusterize::compute_meshlet_bounds(
             meshlet_in_cpu,
             &vertex_data_adapter,
           );
 
+          let offset_of_vertices = unsafe {
+            meshlet_in_cpu.vertices.as_ptr().offset_from(vertices_start) as u32
+          };
+          let offset_of_primitives = unsafe {
+            meshlet_in_cpu.triangles.as_ptr().offset_from(primitives_start) as u32
+          };
+
           let meshlet = HalaMeshlet {
             center: bounds.center.into(),
             radius: bounds.radius,
             cone_apex: bounds.cone_apex.into(),
             cone_axis: bounds.cone_axis.into(),
+            offset_of_vertices,
             num_of_vertices: meshlet_in_cpu.vertices.len() as u32,
-            num_of_triangles: meshlet_in_cpu.triangles.len() as u32,
+            offset_of_primitives,
+            num_of_primitives: meshlet_in_cpu.triangles.len() as u32,
           };
+          // log::info!("Meshlet: V[{}, {}], P[{}, {}]", offset_of_vertices, meshlet.num_of_vertices, offset_of_primitives, meshlet.num_of_primitives);
 
           prim_in_cpu.meshlets.push(meshlet);
-          prim_in_cpu.meshlet_vertices.push(meshlet_in_cpu.vertices.to_vec());
-          prim_in_cpu.meshlet_primitives.push(meshlet_in_cpu.triangles.to_vec());
         }
+        prim_in_cpu.meshlet_vertices = meshlets_in_cpu.vertices.to_owned();
+        prim_in_cpu.meshlet_primitives = meshlets_in_cpu.triangles.to_owned();
 
         let meshlet_buffer_size = (std::mem::size_of::<HalaMeshlet>() * prim_in_cpu.meshlets.len()) as u64;
         let meshlet_vertex_buffer_size = (std::mem::size_of::<u32>() * meshlets_in_cpu.vertices.len()) as u64;
@@ -617,45 +629,41 @@ impl HalaSceneGPUUploader {
 
         prim.meshlet_buffer = Some(meshlet_buffer);
 
-        // Create meshlet vertex buffers.
-        for (buffer_index, meshlet_vertices_in_cpu) in prim_in_cpu.meshlet_vertices.iter().enumerate() {
-          let meshlet_vertex_buffer_size = (std::mem::size_of::<u32>() * meshlet_vertices_in_cpu.len()) as u64;
-          let meshlet_vertex_buffer = HalaBuffer::new(
-            Rc::clone(&context.logical_device),
-            meshlet_vertex_buffer_size,
-            HalaBufferUsageFlags::SHADER_DEVICE_ADDRESS
-              | HalaBufferUsageFlags::STORAGE_BUFFER
-              | HalaBufferUsageFlags::TRANSFER_DST,
-            HalaMemoryLocation::GpuOnly,
-            &format!("meshlet_vertex_{}_{}_{}.buffer", mesh_index, prim_index, buffer_index)
-          )?;
-          meshlet_vertex_buffer.update_gpu_memory_with_buffer(
-            meshlet_vertices_in_cpu.as_slice(),
-            &staging_buffer,
-            transfer_command_buffers)?;
+        // Create meshlet vertex buffer.
+        let meshlet_vertex_buffer_size = (std::mem::size_of::<u32>() * prim_in_cpu.meshlet_vertices.len()) as u64;
+        let meshlet_vertex_buffer = HalaBuffer::new(
+          Rc::clone(&context.logical_device),
+          meshlet_vertex_buffer_size,
+          HalaBufferUsageFlags::SHADER_DEVICE_ADDRESS
+            | HalaBufferUsageFlags::STORAGE_BUFFER
+            | HalaBufferUsageFlags::TRANSFER_DST,
+          HalaMemoryLocation::GpuOnly,
+          &format!("meshlet_vertex_{}_{}.buffer", mesh_index, prim_index)
+        )?;
+        meshlet_vertex_buffer.update_gpu_memory_with_buffer(
+          prim_in_cpu.meshlet_vertices.as_slice(),
+          &staging_buffer,
+          transfer_command_buffers)?;
 
-          prim.meshlet_vertex_buffers.push(meshlet_vertex_buffer);
-        }
+        prim.meshlet_vertex_buffer = Some(meshlet_vertex_buffer);
 
-        // Create meshlet primitive buffers.
-        for (buffer_index, meshlet_primitives_in_cpu) in prim_in_cpu.meshlet_primitives.iter().enumerate() {
-          let meshlet_primitive_buffer_size = (std::mem::size_of::<u8>() * meshlet_primitives_in_cpu.len()) as u64;
-          let meshlet_primitive_buffer = HalaBuffer::new(
-            Rc::clone(&context.logical_device),
-            meshlet_primitive_buffer_size,
-            HalaBufferUsageFlags::SHADER_DEVICE_ADDRESS
-              | HalaBufferUsageFlags::STORAGE_BUFFER
-              | HalaBufferUsageFlags::TRANSFER_DST,
-            HalaMemoryLocation::GpuOnly,
-            &format!("meshlet_primitive_{}_{}_{}.buffer", mesh_index, prim_index, buffer_index)
-          )?;
-          meshlet_primitive_buffer.update_gpu_memory_with_buffer(
-            meshlet_primitives_in_cpu.as_slice(),
-            &staging_buffer,
-            transfer_command_buffers)?;
+        // Create meshlet primitive buffer.
+        let meshlet_primitive_buffer_size = (std::mem::size_of::<u8>() * prim_in_cpu.meshlet_primitives.len()) as u64;
+        let meshlet_primitive_buffer = HalaBuffer::new(
+          Rc::clone(&context.logical_device),
+          meshlet_primitive_buffer_size,
+          HalaBufferUsageFlags::SHADER_DEVICE_ADDRESS
+            | HalaBufferUsageFlags::STORAGE_BUFFER
+            | HalaBufferUsageFlags::TRANSFER_DST,
+          HalaMemoryLocation::GpuOnly,
+          &format!("meshlet_primitive_{}_{}.buffer", mesh_index, prim_index)
+        )?;
+        meshlet_primitive_buffer.update_gpu_memory_with_buffer(
+          prim_in_cpu.meshlet_primitives.as_slice(),
+          &staging_buffer,
+          transfer_command_buffers)?;
 
-          prim.meshlet_primitive_buffers.push(meshlet_primitive_buffer);
-        }
+        prim.meshlet_primitive_buffer = Some(meshlet_primitive_buffer);
       }
     }
 

@@ -370,7 +370,11 @@ impl HalaRendererTrait for HalaRenderer {
               stage_flags: hala_gfx::HalaShaderStageFlags::FRAGMENT
                 | (if self.use_mesh_shader { hala_gfx::HalaShaderStageFlags::TASK | hala_gfx::HalaShaderStageFlags::MESH } else { hala_gfx::HalaShaderStageFlags::VERTEX }),
               offset: 0,
-              size: 12, // Mesh index, Material index and Primitive index.
+              size: if !self.use_mesh_shader {
+                12  // Mesh index, Material index and Primitive index.
+              } else {
+                16  // Mesh index, Material index, Primitive index and Meshlet index.
+              }
             },
           ],
           hala_gfx::HalaPrimitiveTopology::TRIANGLE_LIST,
@@ -463,6 +467,9 @@ impl HalaRendererTrait for HalaRenderer {
             push_constants.extend_from_slice(&(mesh_index as u32).to_le_bytes());
             push_constants.extend_from_slice(&primitive.material_index.to_le_bytes());
             push_constants.extend_from_slice(&primitive_index.to_le_bytes());
+            if self.use_mesh_shader {
+              push_constants.extend_from_slice(&primitive.meshlet_count.to_le_bytes());  // Meshlet index.
+            }
             command_buffers.push_constants(
               index,
               &self.pso[material_type],
@@ -499,7 +506,7 @@ impl HalaRendererTrait for HalaRenderer {
             } else {
               command_buffers.draw_mesh_tasks(
                 index,
-                primitive.meshlet_count,
+                1,
                 1,
                 1,
               );
