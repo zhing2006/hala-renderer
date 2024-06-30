@@ -1,6 +1,5 @@
 /// The meshlet.
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
+#[repr(C, align(4))]
 pub struct HalaMeshlet {
   pub center: [f32; 3],
   pub radius: f32,

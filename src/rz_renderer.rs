@@ -184,9 +184,9 @@ impl HalaRendererTrait for HalaRenderer {
               | (if self.use_mesh_shader { hala_gfx::HalaShaderStageFlags::TASK | hala_gfx::HalaShaderStageFlags::MESH } else { hala_gfx::HalaShaderStageFlags::VERTEX }),
             hala_gfx::HalaDescriptorBindingFlags::PARTIALLY_BOUND
           ),
-          ( // Meshlet information uniform buffers.
+          ( // Meshlet information storage buffers.
             4,
-            hala_gfx::HalaDescriptorType::UNIFORM_BUFFER,
+            hala_gfx::HalaDescriptorType::STORAGE_BUFFER,
             meshlet_buffers.len() as u32,
             hala_gfx::HalaShaderStageFlags::FRAGMENT | hala_gfx::HalaShaderStageFlags::COMPUTE
               | (if self.use_mesh_shader { hala_gfx::HalaShaderStageFlags::TASK | hala_gfx::HalaShaderStageFlags::MESH } else { hala_gfx::HalaShaderStageFlags::VERTEX }),
@@ -268,7 +268,7 @@ impl HalaRendererTrait for HalaRenderer {
         3,
         index_buffers.as_slice(),
       );
-      dynamic_descriptor_set.update_uniform_buffers(
+      dynamic_descriptor_set.update_storage_buffers(
         index,
         4,
         meshlet_buffers.as_slice(),
