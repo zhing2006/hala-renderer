@@ -420,7 +420,7 @@ impl HalaRendererTrait for HalaRenderer {
               size: if !self.use_mesh_shader {
                 12  // Mesh index, Material index and Primitive index.
               } else {
-                16  // Mesh index, Material index, Primitive index and Meshlet index.
+                20  // Mesh index, Material index, Primitive index, Meshlet count and Dispatch size X.
               }
             },
           ],
@@ -509,13 +509,18 @@ impl HalaRendererTrait for HalaRenderer {
               &[],
             );
 
+            let dispatch_size_x = |a: u32, b: u32| -> u32 {
+              (a + b - 1) / b
+            }(primitive.meshlet_count, 32);  // 32 threads per task group.
+
             // Push constants.
             let mut push_constants = Vec::new();
             push_constants.extend_from_slice(&(mesh_index as u32).to_le_bytes());
             push_constants.extend_from_slice(&primitive.material_index.to_le_bytes());
             push_constants.extend_from_slice(&primitive_index.to_le_bytes());
             if self.use_mesh_shader {
-              push_constants.extend_from_slice(&primitive.meshlet_count.to_le_bytes());  // Meshlet index.
+              push_constants.extend_from_slice(&primitive.meshlet_count.to_le_bytes());
+              push_constants.extend_from_slice(&dispatch_size_x.to_le_bytes());
             }
             command_buffers.push_constants(
               index,
@@ -551,12 +556,9 @@ impl HalaRendererTrait for HalaRenderer {
                 0
               );
             } else {
-              let div_up = |a: u32, b: u32| -> u32 {
-                (a + b - 1) / b
-              };
               command_buffers.draw_mesh_tasks(
                 index,
-                div_up(primitive.meshlet_count, 32),  // 32 threads per task group.
+                dispatch_size_x,
                 1,
                 1,
               );
