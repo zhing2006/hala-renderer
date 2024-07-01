@@ -568,7 +568,7 @@ impl HalaSceneGPUUploader {
             num_of_primitives: (wrapped_meshlet_in_cpu.triangles.len() / 3) as u32,
             padding: [0f32; 2],
           };
-          log::info!("Meshlet: V[{}, {}], P[{}, {}]", meshlet.offset_of_vertices, meshlet.num_of_vertices, meshlet.offset_of_primitives, meshlet.num_of_primitives);
+          // log::info!("Meshlet: V[{}, {}], P[{}, {}]", meshlet.offset_of_vertices, meshlet.num_of_vertices, meshlet.offset_of_primitives, meshlet.num_of_primitives);
 
           prim_in_cpu.meshlets.push(meshlet);
           for i in wrapped_meshlet_in_cpu.vertices.iter() {

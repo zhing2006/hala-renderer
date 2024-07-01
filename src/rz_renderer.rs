@@ -551,9 +551,12 @@ impl HalaRendererTrait for HalaRenderer {
                 0
               );
             } else {
+              let div_up = |a: u32, b: u32| -> u32 {
+                (a + b - 1) / b
+              };
               command_buffers.draw_mesh_tasks(
                 index,
-                1,
+                div_up(primitive.meshlet_count, 32),  // 32 threads per task group.
                 1,
                 1,
               );
