@@ -9,7 +9,7 @@ pub struct HalaPrimitive {
   pub material_index: u32,
   pub meshlets: Vec<HalaMeshlet>,
   pub meshlet_vertices: Vec<u32>,
-  pub meshlet_primitives: Vec<u8>,
+  pub meshlet_primitives: Vec<u32>,
 }
 
 /// A mesh is a collection of vertices and indices that define a 3D object.

@@ -549,42 +549,39 @@ impl HalaSceneGPUUploader {
           0.5,
         );
         for (meshlet_index, meshlet_in_cpu) in meshlets_in_cpu.meshlets.iter().enumerate() {
+          let wrapped_meshlet_in_cpu = meshlets_in_cpu.get(meshlet_index);
           let bounds = meshopt::clusterize::compute_meshlet_bounds(
-            meshlets_in_cpu.get(meshlet_index),
+            wrapped_meshlet_in_cpu,
             &vertex_data_adapter,
           );
 
           assert!(meshlet_in_cpu.triangle_offset % 4 == 0, "The triangle offset of the meshlet is not a multiple of 4.");
+          assert!(wrapped_meshlet_in_cpu.triangles.len() % 3 == 0, "The triangle count of the meshlet is not a multiple of 3.");
           let meshlet = HalaMeshlet {
             center: bounds.center.into(),
             radius: bounds.radius,
             cone_apex: bounds.cone_apex.into(),
             cone_axis: bounds.cone_axis.into(),
-            offset_of_vertices: meshlet_in_cpu.vertex_offset,
+            offset_of_vertices: prim_in_cpu.meshlet_vertices.len() as u32,
             num_of_vertices: meshlet_in_cpu.vertex_count,
-            offset_of_primitives: meshlet_in_cpu.triangle_offset,
-            num_of_primitives: meshlet_in_cpu.triangle_count,
+            offset_of_primitives: prim_in_cpu.meshlet_primitives.len() as u32,
+            num_of_primitives: (wrapped_meshlet_in_cpu.triangles.len() / 3) as u32,
+            padding: [0f32; 2],
           };
           log::info!("Meshlet: V[{}, {}], P[{}, {}]", meshlet.offset_of_vertices, meshlet.num_of_vertices, meshlet.offset_of_primitives, meshlet.num_of_primitives);
 
           prim_in_cpu.meshlets.push(meshlet);
-        }
-
-        let num_of_total_vertices = prim_in_cpu.meshlets.last().map(|meshlet| meshlet.offset_of_vertices + meshlet.num_of_vertices).unwrap_or(0);
-        for i in 0..num_of_total_vertices {
-          prim_in_cpu.meshlet_vertices.push(meshlets_in_cpu.vertices[i as usize]);
-        }
-        prim_in_cpu.meshlet_vertices = meshlets_in_cpu.vertices.to_owned();
-
-        assert!(meshlets_in_cpu.triangles.len() % 3 == 0, "The triangle index count of the meshlet is not a multiple of 3.");
-        let num_of_total_primitives = prim_in_cpu.meshlets.last().map(|meshlet| meshlet.offset_of_primitives + ((meshlet.num_of_primitives * 3 + 3) & !3)).unwrap_or(0);
-        for i in 0..num_of_total_primitives {
-          prim_in_cpu.meshlet_primitives.push(meshlets_in_cpu.triangles[i as usize]);
+          for i in wrapped_meshlet_in_cpu.vertices.iter() {
+            prim_in_cpu.meshlet_vertices.push(*i as u32);
+          }
+          for c in wrapped_meshlet_in_cpu.triangles.chunks(3) {
+            prim_in_cpu.meshlet_primitives.push((c[0] as u32) | (c[1] as u32) << 8 | (c[2] as u32) << 16);
+          }
         }
 
         let meshlet_buffer_size = (std::mem::size_of::<HalaMeshlet>() * prim_in_cpu.meshlets.len()) as u64;
         let meshlet_vertex_buffer_size = (std::mem::size_of::<u32>() * prim_in_cpu.meshlet_vertices.len()) as u64;
-        let meshlet_primitive_buffer_size = (std::mem::size_of::<u8>() * prim_in_cpu.meshlet_primitives.len()) as u64;
+        let meshlet_primitive_buffer_size = (std::mem::size_of::<u32>() * prim_in_cpu.meshlet_primitives.len()) as u64;
         staging_buffer_size = std::cmp::max(
           staging_buffer_size,
           std::cmp::max(
@@ -653,7 +650,7 @@ impl HalaSceneGPUUploader {
         prim.meshlet_vertex_buffer = Some(meshlet_vertex_buffer);
 
         // Create meshlet primitive buffer.
-        let meshlet_primitive_buffer_size = (std::mem::size_of::<u8>() * prim_in_cpu.meshlet_primitives.len()) as u64;
+        let meshlet_primitive_buffer_size = (std::mem::size_of::<u32>() * prim_in_cpu.meshlet_primitives.len()) as u64;
         let meshlet_primitive_buffer = HalaBuffer::new(
           Rc::clone(&context.logical_device),
           meshlet_primitive_buffer_size,

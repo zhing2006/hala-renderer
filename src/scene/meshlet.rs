@@ -1,5 +1,5 @@
 /// The meshlet.
-#[repr(C, align(4))]
+#[repr(C, align(16))]
 pub struct HalaMeshlet {
   pub center: [f32; 3],
   pub radius: f32,
@@ -9,4 +9,5 @@ pub struct HalaMeshlet {
   pub num_of_primitives: u32,
   pub offset_of_vertices: u32,
   pub offset_of_primitives: u32,
+  pub padding: [f32; 2],
 }

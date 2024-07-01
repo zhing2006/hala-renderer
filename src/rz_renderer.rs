@@ -526,22 +526,22 @@ impl HalaRendererTrait for HalaRenderer {
               push_constants.as_slice(),
             );
 
-            // Bind vertex buffers.
-            command_buffers.bind_vertex_buffers(
-              index,
-              0,
-              &[primitive.vertex_buffer.as_ref()],
-              &[0]);
-
-            // Bind index buffer.
-            command_buffers.bind_index_buffers(
-              index,
-              &[primitive.index_buffer.as_ref()],
-              &[0],
-              hala_gfx::HalaIndexType::UINT32);
-
             // Draw.
             if !self.use_mesh_shader {
+              // Bind vertex buffers.
+              command_buffers.bind_vertex_buffers(
+                index,
+                0,
+                &[primitive.vertex_buffer.as_ref()],
+                &[0]);
+
+              // Bind index buffer.
+              command_buffers.bind_index_buffers(
+                index,
+                &[primitive.index_buffer.as_ref()],
+                &[0],
+                hala_gfx::HalaIndexType::UINT32);
+
               command_buffers.draw_indexed(
                 index,
                 primitive.index_count,
