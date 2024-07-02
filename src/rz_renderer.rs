@@ -429,7 +429,7 @@ impl HalaRendererTrait for HalaRenderer {
           (hala_gfx::HalaBlendFactor::ONE, hala_gfx::HalaBlendFactor::ZERO, hala_gfx::HalaBlendOp::ADD),
           (1.0, hala_gfx::HalaFrontFace::COUNTER_CLOCKWISE, hala_gfx::HalaCullModeFlags::BACK, hala_gfx::HalaPolygonMode::FILL),
           (true, true, hala_gfx::HalaCompareOp::GREATER), // We use reverse Z, so greater is less.
-          &shaders.as_slice(),
+          shaders.as_slice(),
           &[hala_gfx::HalaDynamicState::VIEWPORT],
           Some(&pipeline_cache),
           &if self.use_mesh_shader {
@@ -509,9 +509,7 @@ impl HalaRendererTrait for HalaRenderer {
               &[],
             );
 
-            let dispatch_size_x = |a: u32, b: u32| -> u32 {
-              (a + b - 1) / b
-            }(primitive.meshlet_count, 32);  // 32 threads per task group.
+            let dispatch_size_x = (primitive.meshlet_count + 32 - 1) / 32;  // 32 threads per task group.
 
             // Push constants.
             let mut push_constants = Vec::new();
@@ -748,7 +746,7 @@ impl HalaRenderer {
     fragment_file_path: &str,
     debug_name: &str) -> Result<(), HalaRendererError>
   {
-    assert!(self.use_mesh_shader == false, "The renderer is not support mesh shader!");
+    assert!(!self.use_mesh_shader, "The renderer is not support mesh shader!");
 
     let context = self.resources.context.borrow();
 
@@ -786,7 +784,7 @@ impl HalaRenderer {
     fragment_file_path: &str,
     debug_name: &str) -> Result<(), HalaRendererError>
   {
-    assert!(self.use_mesh_shader == true, "The renderer is not support traditional shader!");
+    assert!(self.use_mesh_shader, "The renderer is not support traditional shader!");
 
     let context = self.resources.context.borrow();
 
