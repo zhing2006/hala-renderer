@@ -562,11 +562,12 @@ impl HalaSceneGPUUploader {
             radius: bounds.radius,
             cone_apex: bounds.cone_apex.into(),
             cone_axis: bounds.cone_axis.into(),
+            cone_cutoff: bounds.cone_cutoff,
             offset_of_vertices: prim_in_cpu.meshlet_vertices.len() as u32,
             num_of_vertices: meshlet_in_cpu.vertex_count,
             offset_of_primitives: prim_in_cpu.meshlet_primitives.len() as u32,
             num_of_primitives: (wrapped_meshlet_in_cpu.triangles.len() / 3) as u32,
-            padding: [0f32; 2],
+            padding: 0f32,
           };
           // log::info!("Meshlet: V[{}, {}], P[{}, {}]", meshlet.offset_of_vertices, meshlet.num_of_vertices, meshlet.offset_of_primitives, meshlet.num_of_primitives);
 
