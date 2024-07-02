@@ -475,8 +475,8 @@ impl HalaSceneGPUUploader {
     }
 
     let mut scene_in_gpu = gpu::HalaScene {
-      camera_view_matrices: camera_view_matrices,
-      camera_proj_matrices: camera_proj_matrices,
+      camera_view_matrices,
+      camera_proj_matrices,
       cameras: camera_buffer,
       lights: light_buffer,
       light_aabbs: light_aabb_buffer,
@@ -537,7 +537,7 @@ impl HalaSceneGPUUploader {
         let vertex_data_adapter = unsafe {
           meshopt::VertexDataAdapter::new(
             std::slice::from_raw_parts(prim_in_cpu.vertices.as_ptr() as *const u8, prim_in_cpu.vertices.len() * std::mem::size_of::<HalaVertex>()),
-            std::mem::size_of::<HalaVertex>() as usize,
+            std::mem::size_of::<HalaVertex>(),
             0,
           ).map_err(|err| HalaRendererError::new("Failed to create vertex data adapter.", Some(Box::new(err))))?
         };
@@ -558,10 +558,10 @@ impl HalaSceneGPUUploader {
           assert!(meshlet_in_cpu.triangle_offset % 4 == 0, "The triangle offset of the meshlet is not a multiple of 4.");
           assert!(wrapped_meshlet_in_cpu.triangles.len() % 3 == 0, "The triangle count of the meshlet is not a multiple of 3.");
           let meshlet = HalaMeshlet {
-            center: bounds.center.into(),
+            center: bounds.center,
             radius: bounds.radius,
-            cone_apex: bounds.cone_apex.into(),
-            cone_axis: bounds.cone_axis.into(),
+            cone_apex: bounds.cone_apex,
+            cone_axis: bounds.cone_axis,
             cone_cutoff: bounds.cone_cutoff,
             offset_of_vertices: prim_in_cpu.meshlet_vertices.len() as u32,
             num_of_vertices: meshlet_in_cpu.vertex_count,
@@ -573,7 +573,7 @@ impl HalaSceneGPUUploader {
 
           prim_in_cpu.meshlets.push(meshlet);
           for i in wrapped_meshlet_in_cpu.vertices.iter() {
-            prim_in_cpu.meshlet_vertices.push(*i as u32);
+            prim_in_cpu.meshlet_vertices.push(*i);
           }
           for c in wrapped_meshlet_in_cpu.triangles.chunks(3) {
             prim_in_cpu.meshlet_primitives.push((c[0] as u32) | (c[1] as u32) << 8 | (c[2] as u32) << 16);

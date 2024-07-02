@@ -135,7 +135,7 @@ impl HalaGltfLoader {
       log::debug!("Loading scene \"{}\".", scene.name().unwrap_or("<Unnamed>"));
 
       let mut node_queue = VecDeque::new();
-      node_queue.extend(scene.nodes().map(|node| (std::u32::MAX, node)));
+      node_queue.extend(scene.nodes().map(|node| (u32::MAX, node)));
 
       while !node_queue.is_empty() {
         let node_pair = node_queue.pop_front();
@@ -144,7 +144,7 @@ impl HalaGltfLoader {
           let current_index = loaded_nodes.len() as u32;
           let mut loaded_node = HalaNode {
             name: node.name().unwrap_or("<Unnamed>").to_owned(),
-            parent: if parent_idx == std::u32::MAX { None } else { Some(parent_idx) },
+            parent: if parent_idx == u32::MAX { None } else { Some(parent_idx) },
             local_transform: glam::Mat4::from_cols_array_2d(&local_mtx),
             ..Default::default()
           };

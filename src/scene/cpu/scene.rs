@@ -108,7 +108,7 @@ impl HalaScene {
       }
     }
     for (idx, node) in self.nodes.iter_mut().enumerate() {
-      node.children = temp_children[idx].clone();
+      temp_children[idx].clone_into(&mut node.children);
       node.world_transform = temp_world_transforms[idx];
     }
   }

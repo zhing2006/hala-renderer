@@ -785,7 +785,7 @@ impl HalaRenderer {
       enable_tonemap,
       enable_aces,
       use_simple_aces,
-      max_frames: if max_frames == 0 { std::u64::MAX } else { max_frames },
+      max_frames: if max_frames == 0 { u64::MAX } else { max_frames },
 
       resources: std::mem::ManuallyDrop::new(resources),
 

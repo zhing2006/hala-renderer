@@ -129,6 +129,7 @@ impl HalaRendererResources {
 }
 
 /// The renderer data.
+#[derive(Default)]
 pub struct HalaRendererData {
   pub image_index: usize,
   pub is_device_lost: bool,
@@ -140,13 +141,11 @@ impl HalaRendererData {
   /// Create a new renderer data.
   /// return: The renderer data.
   pub fn new() -> Self {
-    Self {
-      image_index: 0,
-      is_device_lost: false,
-    }
+    Self::default()
   }
 
 }
+
 
 /// The renderer statistics.
 pub struct HalaRendererStatistics {
@@ -157,12 +156,10 @@ pub struct HalaRendererStatistics {
   pub total_gpu_frames: u64,
 }
 
-/// The renderer statistics implementation.
-impl HalaRendererStatistics {
+/// The renderer statistics default implementation.
+impl Default for HalaRendererStatistics {
 
-  /// Create a new renderer statistics.
-  /// return: The renderer statistics.
-  pub fn new() -> Self {
+  fn default() -> Self {
     Self {
       total_frames: 0,
       last_stat_time: std::time::Instant::now(),
@@ -170,6 +167,17 @@ impl HalaRendererStatistics {
       total_gpu_nanoseconds: 0,
       total_gpu_frames: 0,
     }
+  }
+
+}
+
+/// The renderer statistics implementation.
+impl HalaRendererStatistics {
+
+  /// Create a new renderer statistics.
+  /// return: The renderer statistics.
+  pub fn new() -> Self {
+    Self::default()
   }
 
   /// Reset the renderer statistics.
