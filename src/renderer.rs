@@ -281,7 +281,7 @@ pub trait HalaRendererTrait {
 
     // Statistic.
     if self.statistics_mut().total_frames > self.resources().context.borrow().swapchain.num_of_images as u64 {
-      let gpu_time = self.resources().context.borrow().get_gpu_frame_time()?;
+      let gpu_time = self.resources().context.borrow().get_gpu_frame_time(self.data().image_index)?;
       self.statistics_mut().set_gpu_time(&gpu_time);
     }
     self.statistics_mut().inc_total_frames();
