@@ -432,6 +432,8 @@ impl HalaRendererTrait for HalaRenderer {
       self.data.image_index,
       &self.resources.graphics_command_buffers,
       None,
+      None,
+      None,
       |index, command_buffers| {
         ui_fn(index, command_buffers)?;
 

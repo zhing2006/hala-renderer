@@ -473,7 +473,9 @@ impl HalaRendererTrait for HalaRenderer {
     context.record_graphics_command_buffer(
       self.data.image_index,
       &self.resources.graphics_command_buffers,
-      Some(([25.0 / 255.0, 118.0 / 255.0, 210.0 / 255.0, 1.0], 0.0, 0)),  // We use reverse Z, so clear depth to 0.0.
+      Some([25.0 / 255.0, 118.0 / 255.0, 210.0 / 255.0, 1.0]),
+      Some(0.0),
+      Some(0),  // We use reverse Z, so clear depth to 0.0.
       |index, command_buffers| {
         command_buffers.set_viewport(
           index,
