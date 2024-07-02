@@ -268,21 +268,27 @@ impl HalaRendererTrait for HalaRenderer {
         3,
         index_buffers.as_slice(),
       );
-      dynamic_descriptor_set.update_storage_buffers(
-        index,
-        4,
-        meshlet_buffers.as_slice(),
-      );
-      dynamic_descriptor_set.update_storage_buffers(
-        index,
-        5,
-        meshlet_vertex_buffers.as_slice(),
-      );
-      dynamic_descriptor_set.update_storage_buffers(
-        index,
-        6,
-        meshlet_primitive_buffers.as_slice(),
-      );
+      if !meshlet_buffers.is_empty() {
+        dynamic_descriptor_set.update_storage_buffers(
+          index,
+          4,
+          meshlet_buffers.as_slice(),
+        );
+      }
+      if !meshlet_vertex_buffers.is_empty() {
+        dynamic_descriptor_set.update_storage_buffers(
+          index,
+          5,
+          meshlet_vertex_buffers.as_slice(),
+        );
+      }
+      if !meshlet_primitive_buffers.is_empty() {
+        dynamic_descriptor_set.update_storage_buffers(
+          index,
+          6,
+          meshlet_primitive_buffers.as_slice(),
+        );
+      }
     }
 
     // Update static descriptor set.
