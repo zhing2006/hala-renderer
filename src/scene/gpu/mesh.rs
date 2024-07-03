@@ -3,6 +3,8 @@ use hala_gfx::{
   HalaAccelerationStructure,
 };
 
+use crate::scene::HalaBounds;
+
 /// The primitive in the GPU.
 pub struct HalaPrimitive {
   pub vertex_buffer: HalaBuffer,
@@ -10,6 +12,7 @@ pub struct HalaPrimitive {
   pub vertex_count: u32,
   pub index_count: u32,
   pub material_index: u32,
+  pub bounds: HalaBounds,
 
   pub meshlet_count: u32,
   pub meshlet_buffer: Option<HalaBuffer>,

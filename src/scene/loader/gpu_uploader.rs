@@ -29,6 +29,7 @@ use crate::{
   error::HalaRendererError,
   scene::{
     HalaVertex,
+    HalaBounds,
     HalaMeshlet,
   },
 };
@@ -444,12 +445,18 @@ impl HalaSceneGPUUploader {
 
         let material_index = prim.material_index;
 
+        let mut bounds = HalaBounds::new([0f32, 0f32, 0f32], [0f32, 0f32, 0f32]);
+        for vertex in prim.vertices.iter() {
+          bounds.encapsulate_point(vertex.position.into());
+        }
+
         primitives.push(gpu::HalaPrimitive {
           vertex_buffer,
           index_buffer,
           vertex_count: prim.vertices.len() as u32,
           index_count: prim.indices.len() as u32,
           material_index,
+          bounds,
           meshlet_count: 0u32,
           meshlet_buffer: None,
           meshlet_vertex_buffer: None,
