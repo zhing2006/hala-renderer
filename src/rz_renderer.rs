@@ -385,6 +385,7 @@ impl HalaRendererTrait for HalaRenderer {
           Rc::clone(&context.logical_device),
           &context.swapchain,
           &[&self.static_descriptor_set.layout, &dynamic_descriptor_set.layout, &textures_descriptor_set.layout],
+          hala_gfx::HalaPipelineCreateFlags::default(),
           &[
             hala_gfx::HalaVertexInputAttributeDescription {
               binding: 0,
