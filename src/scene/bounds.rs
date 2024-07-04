@@ -17,6 +17,17 @@ impl HalaBounds {
     Self { center, extents }
   }
 
+  /// Create a new HalaBounds instance with a given size.
+  /// param center: The center of the AABB.
+  /// param size: The size of the AABB.
+  /// return: The new HalaBounds instance.
+  pub fn new_with_size(center: [f32; 3], size: [f32; 3]) -> Self {
+    Self {
+      center,
+      extents: [size[0] * 0.5, size[1] * 0.5, size[2] * 0.5],
+    }
+  }
+
   /// Get the size of the AABB.
   /// return: The size of the AABB.
   pub fn get_size(&self) -> [f32; 3] {
