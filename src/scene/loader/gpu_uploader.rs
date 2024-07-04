@@ -445,7 +445,11 @@ impl HalaSceneGPUUploader {
 
         let material_index = prim.material_index;
 
-        let mut bounds = HalaBounds::new([0f32, 0f32, 0f32], [0f32, 0f32, 0f32]);
+        let mut bounds = if prim.vertices.is_empty() {
+          HalaBounds::new([0f32, 0f32, 0f32], [0f32, 0f32, 0f32])
+        } else {
+          HalaBounds::new(prim.vertices[0].position.into(), [0f32, 0f32, 0f32])
+        };
         for vertex in prim.vertices.iter() {
           bounds.encapsulate_point(vertex.position.into());
         }
