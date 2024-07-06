@@ -430,10 +430,11 @@ impl HalaRendererTrait for HalaRenderer {
             },
           ],
           hala_gfx::HalaPrimitiveTopology::TRIANGLE_LIST,
-          (hala_gfx::HalaBlendFactor::SRC_ALPHA, hala_gfx::HalaBlendFactor::ONE_MINUS_SRC_ALPHA, hala_gfx::HalaBlendOp::ADD),
-          (hala_gfx::HalaBlendFactor::ONE, hala_gfx::HalaBlendFactor::ZERO, hala_gfx::HalaBlendOp::ADD),
-          (1.0, hala_gfx::HalaFrontFace::COUNTER_CLOCKWISE, hala_gfx::HalaCullModeFlags::BACK, hala_gfx::HalaPolygonMode::FILL),
-          (true, true, hala_gfx::HalaCompareOp::GREATER), // We use reverse Z, so greater is less.
+          &hala_gfx::HalaBlendState::new(hala_gfx::HalaBlendFactor::SRC_ALPHA, hala_gfx::HalaBlendFactor::ONE_MINUS_SRC_ALPHA, hala_gfx::HalaBlendOp::ADD),
+          &hala_gfx::HalaBlendState::new(hala_gfx::HalaBlendFactor::ONE, hala_gfx::HalaBlendFactor::ZERO, hala_gfx::HalaBlendOp::ADD),
+          &hala_gfx::HalaRasterizerState::new(hala_gfx::HalaFrontFace::COUNTER_CLOCKWISE, hala_gfx::HalaCullModeFlags::BACK, hala_gfx::HalaPolygonMode::FILL, 1.0),
+          &hala_gfx::HalaDepthState::new(true, true, hala_gfx::HalaCompareOp::GREATER), // We use reverse Z, so greater is less.
+          None,
           shaders.as_slice(),
           &[hala_gfx::HalaDynamicState::VIEWPORT],
           Some(&pipeline_cache),
