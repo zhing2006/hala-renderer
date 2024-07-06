@@ -5,3 +5,4 @@ pub mod rz_renderer;
 pub mod rt_renderer;
 pub mod envmap;
 pub mod scene;
+pub mod compute_program;

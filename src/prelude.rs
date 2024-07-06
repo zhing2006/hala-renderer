@@ -1,2 +1,6 @@
 pub use crate::error::HalaRendererError;
-pub use crate::rt_renderer::HalaRenderer;
+pub use crate::renderer::HalaRendererTrait;
+pub use crate::compute_program::{
+  HalaComputeProgramDesc,
+  HalaComputeProgram,
+};

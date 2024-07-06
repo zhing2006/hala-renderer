@@ -152,62 +152,62 @@ impl HalaRendererTrait for HalaRenderer {
       hala_gfx::HalaDescriptorSetLayout::new(
         Rc::clone(&context.logical_device),
         &[
-          ( // Materials uniform buffers.
-            0,
-            hala_gfx::HalaDescriptorType::UNIFORM_BUFFER,
-            scene.materials.len() as u32,
-            hala_gfx::HalaShaderStageFlags::FRAGMENT | hala_gfx::HalaShaderStageFlags::COMPUTE
+          hala_gfx::HalaDescriptorSetLayoutBinding { // Materials uniform buffers.
+            binding_index: 0,
+            descriptor_type: hala_gfx::HalaDescriptorType::UNIFORM_BUFFER,
+            descriptor_count: scene.materials.len() as u32,
+            stage_flags: hala_gfx::HalaShaderStageFlags::FRAGMENT | hala_gfx::HalaShaderStageFlags::COMPUTE
               | (if self.use_mesh_shader { hala_gfx::HalaShaderStageFlags::TASK | hala_gfx::HalaShaderStageFlags::MESH } else { hala_gfx::HalaShaderStageFlags::VERTEX }),
-            hala_gfx::HalaDescriptorBindingFlags::PARTIALLY_BOUND
-          ),
-          ( // Object uniform buffers.
-            1,
-            hala_gfx::HalaDescriptorType::UNIFORM_BUFFER,
-            scene.meshes.len() as u32,
-            hala_gfx::HalaShaderStageFlags::FRAGMENT | hala_gfx::HalaShaderStageFlags::COMPUTE
+            binding_flags: hala_gfx::HalaDescriptorBindingFlags::PARTIALLY_BOUND
+          },
+          hala_gfx::HalaDescriptorSetLayoutBinding { // Object uniform buffers.
+            binding_index: 1,
+            descriptor_type: hala_gfx::HalaDescriptorType::UNIFORM_BUFFER,
+            descriptor_count: scene.meshes.len() as u32,
+            stage_flags: hala_gfx::HalaShaderStageFlags::FRAGMENT | hala_gfx::HalaShaderStageFlags::COMPUTE
               | (if self.use_mesh_shader { hala_gfx::HalaShaderStageFlags::TASK | hala_gfx::HalaShaderStageFlags::MESH } else { hala_gfx::HalaShaderStageFlags::VERTEX }),
-            hala_gfx::HalaDescriptorBindingFlags::PARTIALLY_BOUND
-          ),
-          ( // Vertex storage buffers.
-            2,
-            hala_gfx::HalaDescriptorType::STORAGE_BUFFER,
-            vertex_buffers.len() as u32,
-            hala_gfx::HalaShaderStageFlags::FRAGMENT | hala_gfx::HalaShaderStageFlags::COMPUTE
+            binding_flags: hala_gfx::HalaDescriptorBindingFlags::PARTIALLY_BOUND
+          },
+          hala_gfx::HalaDescriptorSetLayoutBinding { // Vertex storage buffers.
+            binding_index: 2,
+            descriptor_type: hala_gfx::HalaDescriptorType::STORAGE_BUFFER,
+            descriptor_count: vertex_buffers.len() as u32,
+            stage_flags: hala_gfx::HalaShaderStageFlags::FRAGMENT | hala_gfx::HalaShaderStageFlags::COMPUTE
               | (if self.use_mesh_shader { hala_gfx::HalaShaderStageFlags::TASK | hala_gfx::HalaShaderStageFlags::MESH } else { hala_gfx::HalaShaderStageFlags::VERTEX }),
-            hala_gfx::HalaDescriptorBindingFlags::PARTIALLY_BOUND
-          ),
-          ( // Index storage buffers.
-            3,
-            hala_gfx::HalaDescriptorType::STORAGE_BUFFER,
-            index_buffers.len() as u32,
-            hala_gfx::HalaShaderStageFlags::FRAGMENT | hala_gfx::HalaShaderStageFlags::COMPUTE
+            binding_flags: hala_gfx::HalaDescriptorBindingFlags::PARTIALLY_BOUND
+          },
+          hala_gfx::HalaDescriptorSetLayoutBinding { // Index storage buffers.
+            binding_index: 3,
+            descriptor_type: hala_gfx::HalaDescriptorType::STORAGE_BUFFER,
+            descriptor_count: index_buffers.len() as u32,
+            stage_flags: hala_gfx::HalaShaderStageFlags::FRAGMENT | hala_gfx::HalaShaderStageFlags::COMPUTE
               | (if self.use_mesh_shader { hala_gfx::HalaShaderStageFlags::TASK | hala_gfx::HalaShaderStageFlags::MESH } else { hala_gfx::HalaShaderStageFlags::VERTEX }),
-            hala_gfx::HalaDescriptorBindingFlags::PARTIALLY_BOUND
-          ),
-          ( // Meshlet information storage buffers.
-            4,
-            hala_gfx::HalaDescriptorType::STORAGE_BUFFER,
-            meshlet_buffers.len() as u32,
-            hala_gfx::HalaShaderStageFlags::FRAGMENT | hala_gfx::HalaShaderStageFlags::COMPUTE
+            binding_flags: hala_gfx::HalaDescriptorBindingFlags::PARTIALLY_BOUND
+          },
+          hala_gfx::HalaDescriptorSetLayoutBinding { // Meshlet information storage buffers.
+            binding_index: 4,
+            descriptor_type: hala_gfx::HalaDescriptorType::STORAGE_BUFFER,
+            descriptor_count: meshlet_buffers.len() as u32,
+            stage_flags: hala_gfx::HalaShaderStageFlags::FRAGMENT | hala_gfx::HalaShaderStageFlags::COMPUTE
               | (if self.use_mesh_shader { hala_gfx::HalaShaderStageFlags::TASK | hala_gfx::HalaShaderStageFlags::MESH } else { hala_gfx::HalaShaderStageFlags::VERTEX }),
-            hala_gfx::HalaDescriptorBindingFlags::PARTIALLY_BOUND
-          ),
-          ( // Meshlet vertex storage buffers.
-            5,
-            hala_gfx::HalaDescriptorType::STORAGE_BUFFER,
-            meshlet_vertex_buffers.len() as u32,
-            hala_gfx::HalaShaderStageFlags::FRAGMENT | hala_gfx::HalaShaderStageFlags::COMPUTE
+            binding_flags: hala_gfx::HalaDescriptorBindingFlags::PARTIALLY_BOUND
+          },
+          hala_gfx::HalaDescriptorSetLayoutBinding { // Meshlet vertex storage buffers.
+            binding_index: 5,
+            descriptor_type: hala_gfx::HalaDescriptorType::STORAGE_BUFFER,
+            descriptor_count: meshlet_vertex_buffers.len() as u32,
+            stage_flags: hala_gfx::HalaShaderStageFlags::FRAGMENT | hala_gfx::HalaShaderStageFlags::COMPUTE
               | (if self.use_mesh_shader { hala_gfx::HalaShaderStageFlags::TASK | hala_gfx::HalaShaderStageFlags::MESH } else { hala_gfx::HalaShaderStageFlags::VERTEX }),
-            hala_gfx::HalaDescriptorBindingFlags::PARTIALLY_BOUND
-          ),
-          ( // Meshlet primitive storage buffers.
-            6,
-            hala_gfx::HalaDescriptorType::STORAGE_BUFFER,
-            meshlet_primitive_buffers.len() as u32,
-            hala_gfx::HalaShaderStageFlags::FRAGMENT | hala_gfx::HalaShaderStageFlags::COMPUTE
+            binding_flags: hala_gfx::HalaDescriptorBindingFlags::PARTIALLY_BOUND
+          },
+          hala_gfx::HalaDescriptorSetLayoutBinding { // Meshlet primitive storage buffers.
+            binding_index: 6,
+            descriptor_type: hala_gfx::HalaDescriptorType::STORAGE_BUFFER,
+            descriptor_count: meshlet_primitive_buffers.len() as u32,
+            stage_flags: hala_gfx::HalaShaderStageFlags::FRAGMENT | hala_gfx::HalaShaderStageFlags::COMPUTE
               | (if self.use_mesh_shader { hala_gfx::HalaShaderStageFlags::TASK | hala_gfx::HalaShaderStageFlags::MESH } else { hala_gfx::HalaShaderStageFlags::VERTEX }),
-            hala_gfx::HalaDescriptorBindingFlags::PARTIALLY_BOUND
-          ),
+            binding_flags: hala_gfx::HalaDescriptorBindingFlags::PARTIALLY_BOUND
+          },
         ],
         "main_dynamic.descriptor_set_layout",
       )?,
@@ -303,24 +303,22 @@ impl HalaRendererTrait for HalaRenderer {
       hala_gfx::HalaDescriptorSetLayout::new(
         Rc::clone(&context.logical_device),
         &[
-          ( // All textures in the scene.
-            0,
-            hala_gfx::HalaDescriptorType::SAMPLED_IMAGE,
-            scene
-              .textures.len() as u32,
-            hala_gfx::HalaShaderStageFlags::FRAGMENT | hala_gfx::HalaShaderStageFlags::COMPUTE
+          hala_gfx::HalaDescriptorSetLayoutBinding { // All textures in the scene.
+            binding_index: 0,
+            descriptor_type: hala_gfx::HalaDescriptorType::SAMPLED_IMAGE,
+            descriptor_count: scene.textures.len() as u32,
+            stage_flags: hala_gfx::HalaShaderStageFlags::FRAGMENT | hala_gfx::HalaShaderStageFlags::COMPUTE
               | (if self.use_mesh_shader { hala_gfx::HalaShaderStageFlags::TASK | hala_gfx::HalaShaderStageFlags::MESH } else { hala_gfx::HalaShaderStageFlags::VERTEX }),
-            hala_gfx::HalaDescriptorBindingFlags::PARTIALLY_BOUND
-          ),
-          (
-            1,
-            hala_gfx::HalaDescriptorType::SAMPLER,
-            scene
-              .textures.len() as u32,
-            hala_gfx::HalaShaderStageFlags::FRAGMENT | hala_gfx::HalaShaderStageFlags::COMPUTE
+            binding_flags: hala_gfx::HalaDescriptorBindingFlags::PARTIALLY_BOUND
+          },
+          hala_gfx::HalaDescriptorSetLayoutBinding { // All samplers in the scene.
+            binding_index: 1,
+            descriptor_type: hala_gfx::HalaDescriptorType::SAMPLER,
+            descriptor_count: scene.textures.len() as u32,
+            stage_flags: hala_gfx::HalaShaderStageFlags::FRAGMENT | hala_gfx::HalaShaderStageFlags::COMPUTE
               | (if self.use_mesh_shader { hala_gfx::HalaShaderStageFlags::TASK | hala_gfx::HalaShaderStageFlags::MESH } else { hala_gfx::HalaShaderStageFlags::VERTEX }),
-            hala_gfx::HalaDescriptorBindingFlags::PARTIALLY_BOUND
-          ),
+            binding_flags: hala_gfx::HalaDescriptorBindingFlags::PARTIALLY_BOUND
+          },
         ],
         "textures.descriptor_set_layout",
       )?,
@@ -676,30 +674,30 @@ impl HalaRenderer {
       hala_gfx::HalaDescriptorSetLayout::new(
         Rc::clone(&resources.context.borrow().logical_device),
         &[
-          ( // Global uniform buffer.
-            0,
-            hala_gfx::HalaDescriptorType::UNIFORM_BUFFER,
-            1,
-            hala_gfx::HalaShaderStageFlags::FRAGMENT | hala_gfx::HalaShaderStageFlags::COMPUTE
+          hala_gfx::HalaDescriptorSetLayoutBinding { // Global uniform buffer.
+            binding_index: 0,
+            descriptor_type: hala_gfx::HalaDescriptorType::UNIFORM_BUFFER,
+            descriptor_count: 1,
+            stage_flags: hala_gfx::HalaShaderStageFlags::FRAGMENT | hala_gfx::HalaShaderStageFlags::COMPUTE
               | (if resources.context.borrow().gpu_req.require_mesh_shader { hala_gfx::HalaShaderStageFlags::TASK | hala_gfx::HalaShaderStageFlags::MESH } else { hala_gfx::HalaShaderStageFlags::VERTEX }),
-            hala_gfx::HalaDescriptorBindingFlags::PARTIALLY_BOUND
-          ),
-          ( // Cameras uniform buffer.
-            1,
-            hala_gfx::HalaDescriptorType::UNIFORM_BUFFER,
-            1,
-            hala_gfx::HalaShaderStageFlags::FRAGMENT | hala_gfx::HalaShaderStageFlags::COMPUTE
+            binding_flags: hala_gfx::HalaDescriptorBindingFlags::PARTIALLY_BOUND
+          },
+          hala_gfx::HalaDescriptorSetLayoutBinding { // Cameras uniform buffer.
+            binding_index: 1,
+            descriptor_type: hala_gfx::HalaDescriptorType::UNIFORM_BUFFER,
+            descriptor_count: 1,
+            stage_flags: hala_gfx::HalaShaderStageFlags::FRAGMENT | hala_gfx::HalaShaderStageFlags::COMPUTE
               | (if resources.context.borrow().gpu_req.require_mesh_shader { hala_gfx::HalaShaderStageFlags::TASK | hala_gfx::HalaShaderStageFlags::MESH } else { hala_gfx::HalaShaderStageFlags::VERTEX }),
-            hala_gfx::HalaDescriptorBindingFlags::PARTIALLY_BOUND
-          ),
-          ( // Lights uniform buffer.
-            2,
-            hala_gfx::HalaDescriptorType::UNIFORM_BUFFER,
-            1,
-            hala_gfx::HalaShaderStageFlags::FRAGMENT | hala_gfx::HalaShaderStageFlags::COMPUTE
+            binding_flags: hala_gfx::HalaDescriptorBindingFlags::PARTIALLY_BOUND
+          },
+          hala_gfx::HalaDescriptorSetLayoutBinding { // Lights uniform buffer.
+            binding_index: 2,
+            descriptor_type: hala_gfx::HalaDescriptorType::UNIFORM_BUFFER,
+            descriptor_count: 1,
+            stage_flags: hala_gfx::HalaShaderStageFlags::FRAGMENT | hala_gfx::HalaShaderStageFlags::COMPUTE
               | (if resources.context.borrow().gpu_req.require_mesh_shader { hala_gfx::HalaShaderStageFlags::TASK | hala_gfx::HalaShaderStageFlags::MESH } else { hala_gfx::HalaShaderStageFlags::VERTEX }),
-            hala_gfx::HalaDescriptorBindingFlags::PARTIALLY_BOUND
-          ),
+            binding_flags: hala_gfx::HalaDescriptorBindingFlags::PARTIALLY_BOUND
+          },
         ],
         "main_static.descriptor_set_layout",
       )?,

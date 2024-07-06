@@ -144,41 +144,41 @@ impl HalaRendererTrait for HalaRenderer {
       hala_gfx::HalaDescriptorSetLayout::new(
         Rc::clone(&context.logical_device),
         &[
-          ( // Main uniform buffer.
-            0,
-            hala_gfx::HalaDescriptorType::UNIFORM_BUFFER,
-            1,
-            hala_gfx::HalaShaderStageFlags::RAYGEN | hala_gfx::HalaShaderStageFlags::CLOSEST_HIT | hala_gfx::HalaShaderStageFlags::CALLABLE,
-            hala_gfx::HalaDescriptorBindingFlags::PARTIALLY_BOUND
-          ),
-          ( // Camera uniform buffer.
-            1,
-            hala_gfx::HalaDescriptorType::UNIFORM_BUFFER,
-            1,
-            hala_gfx::HalaShaderStageFlags::RAYGEN | hala_gfx::HalaShaderStageFlags::CALLABLE,
-            hala_gfx::HalaDescriptorBindingFlags::PARTIALLY_BOUND
-          ),
-          ( // Light uniform buffer.
-            2,
-            hala_gfx::HalaDescriptorType::UNIFORM_BUFFER,
-            1,
-            hala_gfx::HalaShaderStageFlags::RAYGEN | hala_gfx::HalaShaderStageFlags::INTERSECTION | hala_gfx::HalaShaderStageFlags::CALLABLE,
-            hala_gfx::HalaDescriptorBindingFlags::PARTIALLY_BOUND
-          ),
-          ( // Material uniform buffer.
-            3,
-            hala_gfx::HalaDescriptorType::UNIFORM_BUFFER,
-            scene.materials.len() as u32,
-            hala_gfx::HalaShaderStageFlags::RAYGEN | hala_gfx::HalaShaderStageFlags::CALLABLE,
-            hala_gfx::HalaDescriptorBindingFlags::PARTIALLY_BOUND
-          ),
-          ( // Primitive uniform buffer.
-            4,
-            hala_gfx::HalaDescriptorType::UNIFORM_BUFFER,
-            scene.primitives.len() as u32,
-            hala_gfx::HalaShaderStageFlags::RAYGEN | hala_gfx::HalaShaderStageFlags::CLOSEST_HIT,
-            hala_gfx::HalaDescriptorBindingFlags::PARTIALLY_BOUND
-          ),
+          hala_gfx::HalaDescriptorSetLayoutBinding { // Main uniform buffer.
+            binding_index: 0,
+            descriptor_type: hala_gfx::HalaDescriptorType::UNIFORM_BUFFER,
+            descriptor_count: 1,
+            stage_flags: hala_gfx::HalaShaderStageFlags::RAYGEN | hala_gfx::HalaShaderStageFlags::CLOSEST_HIT | hala_gfx::HalaShaderStageFlags::CALLABLE,
+            binding_flags: hala_gfx::HalaDescriptorBindingFlags::PARTIALLY_BOUND
+          },
+          hala_gfx::HalaDescriptorSetLayoutBinding { // Camera uniform buffer.
+            binding_index: 1,
+            descriptor_type: hala_gfx::HalaDescriptorType::UNIFORM_BUFFER,
+            descriptor_count: 1,
+            stage_flags: hala_gfx::HalaShaderStageFlags::RAYGEN | hala_gfx::HalaShaderStageFlags::CALLABLE,
+            binding_flags: hala_gfx::HalaDescriptorBindingFlags::PARTIALLY_BOUND
+          },
+          hala_gfx::HalaDescriptorSetLayoutBinding { // Light uniform buffer.
+            binding_index: 2,
+            descriptor_type: hala_gfx::HalaDescriptorType::UNIFORM_BUFFER,
+            descriptor_count: 1,
+            stage_flags: hala_gfx::HalaShaderStageFlags::RAYGEN | hala_gfx::HalaShaderStageFlags::INTERSECTION | hala_gfx::HalaShaderStageFlags::CALLABLE,
+            binding_flags: hala_gfx::HalaDescriptorBindingFlags::PARTIALLY_BOUND
+          },
+          hala_gfx::HalaDescriptorSetLayoutBinding { // Material uniform buffer.
+            binding_index: 3,
+            descriptor_type: hala_gfx::HalaDescriptorType::UNIFORM_BUFFER,
+            descriptor_count: scene.materials.len() as u32,
+            stage_flags: hala_gfx::HalaShaderStageFlags::RAYGEN | hala_gfx::HalaShaderStageFlags::CALLABLE,
+            binding_flags: hala_gfx::HalaDescriptorBindingFlags::PARTIALLY_BOUND
+          },
+          hala_gfx::HalaDescriptorSetLayoutBinding { // Primitive uniform buffer.
+            binding_index: 4,
+            descriptor_type: hala_gfx::HalaDescriptorType::UNIFORM_BUFFER,
+            descriptor_count: scene.primitives.len() as u32,
+            stage_flags: hala_gfx::HalaShaderStageFlags::RAYGEN | hala_gfx::HalaShaderStageFlags::CLOSEST_HIT,
+            binding_flags: hala_gfx::HalaDescriptorBindingFlags::PARTIALLY_BOUND
+          },
         ],
         "main_dynamic.descriptor_set_layout",
       )?,
@@ -194,13 +194,13 @@ impl HalaRendererTrait for HalaRenderer {
       hala_gfx::HalaDescriptorSetLayout::new(
         Rc::clone(&context.logical_device),
         &[
-          ( // All textures in the scene.
-            0,
-            hala_gfx::HalaDescriptorType::COMBINED_IMAGE_SAMPLER,
-            scene.textures.len() as u32,
-            hala_gfx::HalaShaderStageFlags::RAYGEN | hala_gfx::HalaShaderStageFlags::CALLABLE,
-            hala_gfx::HalaDescriptorBindingFlags::PARTIALLY_BOUND
-          ),
+          hala_gfx::HalaDescriptorSetLayoutBinding { // All textures in the scene.
+            binding_index: 0,
+            descriptor_type: hala_gfx::HalaDescriptorType::COMBINED_IMAGE_SAMPLER,
+            descriptor_count: scene.textures.len() as u32,
+            stage_flags: hala_gfx::HalaShaderStageFlags::RAYGEN | hala_gfx::HalaShaderStageFlags::CALLABLE,
+            binding_flags: hala_gfx::HalaDescriptorBindingFlags::PARTIALLY_BOUND
+          },
         ],
         "textures.descriptor_set_layout",
       )?,
@@ -689,69 +689,69 @@ impl HalaRenderer {
       hala_gfx::HalaDescriptorSetLayout::new(
         Rc::clone(&resources.context.borrow().logical_device),
         &[
-          ( // Acceleration structure.
-            0,
-            hala_gfx::HalaDescriptorType::ACCELERATION_STRUCTURE,
-            1,
-            hala_gfx::HalaShaderStageFlags::RAYGEN | hala_gfx::HalaShaderStageFlags::CLOSEST_HIT,
-            hala_gfx::HalaDescriptorBindingFlags::PARTIALLY_BOUND
-          ),
-          ( // Final image.
-            1,
-            hala_gfx::HalaDescriptorType::STORAGE_IMAGE,
-            1,
-            hala_gfx::HalaShaderStageFlags::RAYGEN,
-            hala_gfx::HalaDescriptorBindingFlags::PARTIALLY_BOUND
-          ),
-          ( // Accum image.
-            2,
-            hala_gfx::HalaDescriptorType::STORAGE_IMAGE,
-            1,
-            hala_gfx::HalaShaderStageFlags::RAYGEN | hala_gfx::HalaShaderStageFlags::CALLABLE,
-            hala_gfx::HalaDescriptorBindingFlags::PARTIALLY_BOUND
-          ),
-          ( // Albedo image.
-            3,
-            hala_gfx::HalaDescriptorType::STORAGE_IMAGE,
-            1,
-            hala_gfx::HalaShaderStageFlags::RAYGEN | hala_gfx::HalaShaderStageFlags::CALLABLE,
-            hala_gfx::HalaDescriptorBindingFlags::PARTIALLY_BOUND
-          ),
-          ( // Normal image.
-            4,
-            hala_gfx::HalaDescriptorType::STORAGE_IMAGE,
-            1,
-            hala_gfx::HalaShaderStageFlags::RAYGEN | hala_gfx::HalaShaderStageFlags::CALLABLE,
-            hala_gfx::HalaDescriptorBindingFlags::PARTIALLY_BOUND
-          ),
-          ( // Blue noise image.
-            5,
-            hala_gfx::HalaDescriptorType::SAMPLED_IMAGE,
-            1,
-            hala_gfx::HalaShaderStageFlags::RAYGEN | hala_gfx::HalaShaderStageFlags::CALLABLE,
-            hala_gfx::HalaDescriptorBindingFlags::PARTIALLY_BOUND
-          ),
-          ( // Environment map(skybox).
-            6,
-            hala_gfx::HalaDescriptorType::COMBINED_IMAGE_SAMPLER,
-            1,
-            hala_gfx::HalaShaderStageFlags::RAYGEN | hala_gfx::HalaShaderStageFlags::CALLABLE,
-            hala_gfx::HalaDescriptorBindingFlags::PARTIALLY_BOUND
-          ),
-          ( // Environment map(marginal distribution, conditional distribution)
-            7,
-            hala_gfx::HalaDescriptorType::SAMPLED_IMAGE,
-            2,
-            hala_gfx::HalaShaderStageFlags::RAYGEN | hala_gfx::HalaShaderStageFlags::CALLABLE,
-            hala_gfx::HalaDescriptorBindingFlags::PARTIALLY_BOUND
-          ),
-          ( // Environment distribution sampler.
-            8,
-            hala_gfx::HalaDescriptorType::SAMPLER,
-            1,
-            hala_gfx::HalaShaderStageFlags::RAYGEN | hala_gfx::HalaShaderStageFlags::CALLABLE,
-            hala_gfx::HalaDescriptorBindingFlags::PARTIALLY_BOUND
-          )
+          hala_gfx::HalaDescriptorSetLayoutBinding {  // Acceleration structure.
+            binding_index: 0,
+            descriptor_type: hala_gfx::HalaDescriptorType::ACCELERATION_STRUCTURE,
+            descriptor_count: 1,
+            stage_flags: hala_gfx::HalaShaderStageFlags::RAYGEN | hala_gfx::HalaShaderStageFlags::CLOSEST_HIT,
+            binding_flags: hala_gfx::HalaDescriptorBindingFlags::PARTIALLY_BOUND
+          },
+          hala_gfx::HalaDescriptorSetLayoutBinding {  // Final image.
+            binding_index: 1,
+            descriptor_type: hala_gfx::HalaDescriptorType::STORAGE_IMAGE,
+            descriptor_count: 1,
+            stage_flags: hala_gfx::HalaShaderStageFlags::RAYGEN,
+            binding_flags: hala_gfx::HalaDescriptorBindingFlags::PARTIALLY_BOUND
+          },
+          hala_gfx::HalaDescriptorSetLayoutBinding {  // Accum image.
+            binding_index: 2,
+            descriptor_type: hala_gfx::HalaDescriptorType::STORAGE_IMAGE,
+            descriptor_count: 1,
+            stage_flags: hala_gfx::HalaShaderStageFlags::RAYGEN | hala_gfx::HalaShaderStageFlags::CALLABLE,
+            binding_flags: hala_gfx::HalaDescriptorBindingFlags::PARTIALLY_BOUND
+          },
+          hala_gfx::HalaDescriptorSetLayoutBinding {  // Albedo image.
+            binding_index: 3,
+            descriptor_type: hala_gfx::HalaDescriptorType::STORAGE_IMAGE,
+            descriptor_count: 1,
+            stage_flags: hala_gfx::HalaShaderStageFlags::RAYGEN | hala_gfx::HalaShaderStageFlags::CALLABLE,
+            binding_flags: hala_gfx::HalaDescriptorBindingFlags::PARTIALLY_BOUND
+          },
+          hala_gfx::HalaDescriptorSetLayoutBinding {  // Normal image.
+            binding_index: 4,
+            descriptor_type: hala_gfx::HalaDescriptorType::STORAGE_IMAGE,
+            descriptor_count: 1,
+            stage_flags: hala_gfx::HalaShaderStageFlags::RAYGEN | hala_gfx::HalaShaderStageFlags::CALLABLE,
+            binding_flags: hala_gfx::HalaDescriptorBindingFlags::PARTIALLY_BOUND
+          },
+          hala_gfx::HalaDescriptorSetLayoutBinding {  // Blue noise image.
+            binding_index: 5,
+            descriptor_type: hala_gfx::HalaDescriptorType::SAMPLED_IMAGE,
+            descriptor_count: 1,
+            stage_flags: hala_gfx::HalaShaderStageFlags::RAYGEN | hala_gfx::HalaShaderStageFlags::CALLABLE,
+            binding_flags: hala_gfx::HalaDescriptorBindingFlags::PARTIALLY_BOUND
+          },
+          hala_gfx::HalaDescriptorSetLayoutBinding {  // Environment map(skybox).
+            binding_index: 6,
+            descriptor_type: hala_gfx::HalaDescriptorType::COMBINED_IMAGE_SAMPLER,
+            descriptor_count: 1,
+            stage_flags: hala_gfx::HalaShaderStageFlags::RAYGEN | hala_gfx::HalaShaderStageFlags::CALLABLE,
+            binding_flags: hala_gfx::HalaDescriptorBindingFlags::PARTIALLY_BOUND
+          },
+          hala_gfx::HalaDescriptorSetLayoutBinding {  // Environment map(marginal distribution, conditional distribution)
+            binding_index: 7,
+            descriptor_type: hala_gfx::HalaDescriptorType::SAMPLED_IMAGE,
+            descriptor_count: 2,
+            stage_flags: hala_gfx::HalaShaderStageFlags::RAYGEN | hala_gfx::HalaShaderStageFlags::CALLABLE,
+            binding_flags: hala_gfx::HalaDescriptorBindingFlags::PARTIALLY_BOUND
+          },
+          hala_gfx::HalaDescriptorSetLayoutBinding {  // Environment distribution sampler.
+            binding_index: 8,
+            descriptor_type: hala_gfx::HalaDescriptorType::SAMPLER,
+            descriptor_count: 1,
+            stage_flags: hala_gfx::HalaShaderStageFlags::RAYGEN | hala_gfx::HalaShaderStageFlags::CALLABLE,
+            binding_flags: hala_gfx::HalaDescriptorBindingFlags::PARTIALLY_BOUND
+          },
         ],
         "main_static.descriptor_set_layout",
       )?,
