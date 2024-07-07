@@ -22,7 +22,6 @@ use crate::error::HalaRendererError;
 /// The compute program description.
 #[derive(Serialize, Deserialize)]
 pub struct HalaComputeProgramDesc {
-  pub name: String,
   pub shader_file_path: String,
 }
 
@@ -41,7 +40,7 @@ impl HalaComputeProgram {
   /// param descriptor_set_layouts: The descriptor set layouts.
   /// param desc: The compute program description.
   /// param pipeline_cache: The pipeline cache.
-  /// param debug_name: The debug name.
+  /// param name: The debug name.
   /// return: The compute program.
   pub fn new<P, DSL>(
     logical_device: Rc<RefCell<HalaLogicalDevice>>,
@@ -49,6 +48,7 @@ impl HalaComputeProgram {
     descriptor_set_layouts: &[DSL],
     desc: &HalaComputeProgramDesc,
     pipeline_cache: Option<&HalaPipelineCache>,
+    debug_name: &str,
   ) -> Result<Self, HalaRendererError>
   where
     P: AsRef<Path>,
@@ -59,17 +59,23 @@ impl HalaComputeProgram {
       &format!("{}/{}", shader_dir.as_ref().to_string_lossy(), desc.shader_file_path),
       HalaShaderStageFlags::COMPUTE,
       HalaRayTracingShaderGroupType::GENERAL,
-      &format!("{}.comp.spv", desc.name),
+      &format!("{}.comp.spv", debug_name),
     )?;
     let pipeline = HalaComputePipeline::new(
       logical_device.clone(),
       descriptor_set_layouts,
       &shader,
       pipeline_cache,
-      &format!("{}.compute_pipeline", desc.name),
+      &format!("{}.compute_pipeline", debug_name),
     )?;
 
     Ok(Self { shader, pipeline })
+  }
+
+  /// Get the compute pipeline.
+  /// return: The compute pipeline.
+  pub fn get_pso(&self) -> &HalaComputePipeline {
+    &self.pipeline
   }
 
   /// Bind the compute program.
@@ -81,13 +87,15 @@ impl HalaComputeProgram {
     DS: AsRef<HalaDescriptorSet>
   {
     command_buffers.bind_compute_pipeline(index, &self.pipeline);
-    command_buffers.bind_compute_descriptor_sets(
-      index,
-      &self.pipeline,
-      0,
-      descriptor_sets,
-      &[],
-    );
+    if !descriptor_sets.is_empty() {
+      command_buffers.bind_compute_descriptor_sets(
+        index,
+        &self.pipeline,
+        0,
+        descriptor_sets,
+        &[],
+      );
+    }
   }
 
   /// Dispatch the compute program.

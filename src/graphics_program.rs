@@ -8,27 +8,27 @@ use serde::de::{self, Unexpected, Visitor};
 
 use hala_gfx::{
   HalaBlendState,
+  HalaBuffer,
   HalaCommandBufferSet,
   HalaDepthState,
   HalaDescriptorSet,
   HalaDescriptorSetLayout,
+  HalaDynamicState,
   HalaGraphicsPipeline,
+  HalaImage,
   HalaLogicalDevice,
   HalaPipelineCache,
+  HalaPipelineCreateFlags,
   HalaPrimitiveTopology,
+  HalaPushConstantRange,
   HalaRasterizerState,
   HalaRayTracingShaderGroupType,
   HalaShader,
   HalaShaderStageFlags,
   HalaStencilState,
   HalaSwapchain,
-  HalaDynamicState,
-  HalaPipelineCreateFlags,
   HalaVertexInputAttributeDescription,
   HalaVertexInputBindingDescription,
-  HalaPushConstantRange,
-  HalaBuffer,
-  HalaImage,
 };
 
 use crate::error::HalaRendererError;
@@ -36,7 +36,6 @@ use crate::error::HalaRendererError;
 /// The graphics program description.
 #[derive(Serialize, Deserialize)]
 pub struct HalaGraphicsProgramDesc {
-  pub name: String,
   pub vertex_shader_file_path: Option<String>,
   pub task_shader_file_path: Option<String>,
   pub mesh_shader_file_path: Option<String>,
@@ -151,6 +150,7 @@ impl HalaGraphicsProgram {
   /// param dynamic_states: The dynamic states.
   /// param desc: The graphics program description.
   /// param pipeline_cache: The pipeline cache.
+  /// param debug_name: The debug name.
   /// return: The result of the graphics program.
   pub fn new<P, DSL, VIAD, VIBD, PCR>(
     logical_device: Rc<RefCell<HalaLogicalDevice>>,
@@ -164,6 +164,7 @@ impl HalaGraphicsProgram {
     dynamic_states: &[HalaDynamicState],
     desc: &HalaGraphicsProgramDesc,
     pipeline_cache: Option<&HalaPipelineCache>,
+    debug_name: &str,
   ) -> Result<Self, HalaRendererError>
   where
     P: AsRef<Path>,
@@ -178,7 +179,7 @@ impl HalaGraphicsProgram {
         &format!("{}/{}", shader_dir.as_ref().to_string_lossy(), vertex_shader_file_path),
         HalaShaderStageFlags::VERTEX,
         HalaRayTracingShaderGroupType::GENERAL,
-        &format!("{}.vert.spv", desc.name),
+        &format!("{}.vert.spv", debug_name),
       )?)
     } else {
       None
@@ -190,7 +191,7 @@ impl HalaGraphicsProgram {
         &format!("{}/{}", shader_dir.as_ref().to_string_lossy(), task_shader_file_path),
         HalaShaderStageFlags::TASK,
         HalaRayTracingShaderGroupType::GENERAL,
-        &format!("{}.task.spv", desc.name),
+        &format!("{}.task.spv", debug_name),
       )?)
     } else {
       None
@@ -202,7 +203,7 @@ impl HalaGraphicsProgram {
         &format!("{}/{}", shader_dir.as_ref().to_string_lossy(), mesh_shader_file_path),
         HalaShaderStageFlags::MESH,
         HalaRayTracingShaderGroupType::GENERAL,
-        &format!("{}.mesh.spv", desc.name),
+        &format!("{}.mesh.spv", debug_name),
       )?)
     } else {
       None
@@ -213,7 +214,7 @@ impl HalaGraphicsProgram {
       &format!("{}/{}", shader_dir.as_ref().to_string_lossy(), desc.fragment_shader_file_path),
       HalaShaderStageFlags::FRAGMENT,
       HalaRayTracingShaderGroupType::GENERAL,
-      &format!("{}.frag.spv", desc.name),
+      &format!("{}.frag.spv", debug_name),
     )?;
 
     let mut shaders = Vec::new();
@@ -244,7 +245,7 @@ impl HalaGraphicsProgram {
       shaders.as_slice(),
       dynamic_states,
       pipeline_cache,
-      &format!("{}.graphics_pipeline", desc.name),
+      &format!("{}.graphics_pipeline", debug_name),
     )?;
 
     Ok(Self {
@@ -269,6 +270,7 @@ impl HalaGraphicsProgram {
   /// param dynamic_states: The dynamic states.
   /// param desc: The graphics program description.
   /// param pipeline_cache: The pipeline cache.
+  /// param debug_name: The debug name.
   /// return: The result of the graphics program.
   pub fn with_rt<P, T, DSL, VIAD, VIBD, PCR>(
     logical_device: Rc<RefCell<HalaLogicalDevice>>,
@@ -283,6 +285,7 @@ impl HalaGraphicsProgram {
     dynamic_states: &[HalaDynamicState],
     desc: &HalaGraphicsProgramDesc,
     pipeline_cache: Option<&HalaPipelineCache>,
+    debug_name: &str,
   ) -> Result<Self, HalaRendererError>
   where
     P: AsRef<Path>,
@@ -298,7 +301,7 @@ impl HalaGraphicsProgram {
         &format!("{}/{}", shader_dir.as_ref().to_string_lossy(), vertex_shader_file_path),
         HalaShaderStageFlags::VERTEX,
         HalaRayTracingShaderGroupType::GENERAL,
-        &format!("{}.vert.spv", desc.name),
+        &format!("{}.vert.spv", debug_name),
       )?)
     } else {
       None
@@ -310,7 +313,7 @@ impl HalaGraphicsProgram {
         &format!("{}/{}", shader_dir.as_ref().to_string_lossy(), task_shader_file_path),
         HalaShaderStageFlags::TASK,
         HalaRayTracingShaderGroupType::GENERAL,
-        &format!("{}.task.spv", desc.name),
+        &format!("{}.task.spv", debug_name),
       )?)
     } else {
       None
@@ -322,7 +325,7 @@ impl HalaGraphicsProgram {
         &format!("{}/{}", shader_dir.as_ref().to_string_lossy(), mesh_shader_file_path),
         HalaShaderStageFlags::MESH,
         HalaRayTracingShaderGroupType::GENERAL,
-        &format!("{}.mesh.spv", desc.name),
+        &format!("{}.mesh.spv", debug_name),
       )?)
     } else {
       None
@@ -333,7 +336,7 @@ impl HalaGraphicsProgram {
       &format!("{}/{}", shader_dir.as_ref().to_string_lossy(), desc.fragment_shader_file_path),
       HalaShaderStageFlags::FRAGMENT,
       HalaRayTracingShaderGroupType::GENERAL,
-      &format!("{}.frag.spv", desc.name),
+      &format!("{}.frag.spv", debug_name),
     )?;
 
     let mut shaders = Vec::new();
@@ -365,7 +368,7 @@ impl HalaGraphicsProgram {
       shaders.as_slice(),
       dynamic_states,
       pipeline_cache,
-      &format!("{}.graphics_pipeline", desc.name),
+      &format!("{}.graphics_pipeline", debug_name),
     )?;
 
     Ok(Self {
@@ -377,6 +380,12 @@ impl HalaGraphicsProgram {
     })
   }
 
+  /// Get the graphics pipeline.
+  /// return: The graphics pipeline.
+  pub fn get_pso(&self) -> &HalaGraphicsPipeline {
+    &self.pipeline
+  }
+
   /// Bind the graphics program.
   /// param index: The index of the command buffer.
   /// param command_buffers: The command buffers.
@@ -386,13 +395,43 @@ impl HalaGraphicsProgram {
     DS: AsRef<HalaDescriptorSet>
   {
     command_buffers.bind_graphics_pipeline(index, &self.pipeline);
-    command_buffers.bind_graphics_descriptor_sets(
-      index,
-      &self.pipeline,
-      0,
-      descriptor_sets,
-      &[],
-    );
+    if !descriptor_sets.is_empty() {
+      command_buffers.bind_graphics_descriptor_sets(
+        index,
+        &self.pipeline,
+        0,
+        descriptor_sets,
+        &[],
+      );
+    }
+  }
+
+  pub fn push_constants(&self, index: usize, command_buffers: &HalaCommandBufferSet, offset: u32, data: &[u8]) {
+    let mut shader_stage = HalaShaderStageFlags::FRAGMENT;
+    if self.vertex_shader.is_some() {
+      shader_stage |= HalaShaderStageFlags::VERTEX;
+    }
+    if self.task_shader.is_some() {
+      shader_stage |= HalaShaderStageFlags::TASK;
+    }
+    if self.mesh_shader.is_some() {
+      shader_stage |= HalaShaderStageFlags::MESH;
+    }
+    command_buffers.push_constants(index, &self.pipeline, shader_stage, offset, data);
+  }
+
+  pub fn push_constants_f32(&self, index: usize, command_buffers: &HalaCommandBufferSet, offset: u32, data: &[f32]) {
+    let mut shader_stage = HalaShaderStageFlags::FRAGMENT;
+    if self.vertex_shader.is_some() {
+      shader_stage |= HalaShaderStageFlags::VERTEX;
+    }
+    if self.task_shader.is_some() {
+      shader_stage |= HalaShaderStageFlags::TASK;
+    }
+    if self.mesh_shader.is_some() {
+      shader_stage |= HalaShaderStageFlags::MESH;
+    }
+    command_buffers.push_constants_f32(index, &self.pipeline, shader_stage, offset, data);
   }
 
   /// Draw.

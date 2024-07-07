@@ -31,7 +31,6 @@ pub struct HalaRayTracingHitShaderDesc {
 /// The raytracing program description.
 #[derive(Serialize, Deserialize)]
 pub struct HalaRayTracingProgramDesc {
-  pub name: String,
   pub raygen_shader_file_paths: Vec<String>,
   pub miss_shader_file_paths: Vec<String>,
   pub hit_shader_file_paths: Vec<HalaRayTracingHitShaderDesc>,
@@ -52,6 +51,16 @@ pub struct HalaRayTracingProgram {
 /// The implementation of the raytracing program.
 impl HalaRayTracingProgram {
 
+  /// Create a new raytracing program.
+  /// param logical_device: The logical device.
+  /// param shader_dir: The shader directory.
+  /// param descriptor_set_layouts: The descriptor set layouts.
+  /// param desc: The description.
+  /// param pipeline_cache: The pipeline cache.
+  /// param staging_buffer: The staging buffer.
+  /// param transfer_command_buffers: The transfer command buffers.
+  /// param debug_name: The debug name.
+  /// return: The raytracing program.
   pub fn new<P, DSL>(
     logical_device: Rc<RefCell<HalaLogicalDevice>>,
     shader_dir: P,
@@ -60,6 +69,7 @@ impl HalaRayTracingProgram {
     pipeline_cache: Option<&HalaPipelineCache>,
     staging_buffer: &HalaBuffer,
     transfer_command_buffers: &HalaCommandBufferSet,
+    debug_name: &str,
   ) -> Result<Self, HalaRendererError>
   where
     P: AsRef<Path>,
@@ -72,7 +82,7 @@ impl HalaRayTracingProgram {
         &format!("{}/{}", shader_dir.as_ref().to_string_lossy(), raygen_shader_file_path),
         HalaShaderStageFlags::RAYGEN,
         HalaRayTracingShaderGroupType::GENERAL,
-        &format!("{}.rgen.spv", desc.name),
+        &format!("{}.rgen.spv", debug_name),
       )?;
       raygen_shaders.push(shader);
     }
@@ -83,7 +93,7 @@ impl HalaRayTracingProgram {
         &format!("{}/{}", shader_dir.as_ref().to_string_lossy(), miss_shader_file_path),
         HalaShaderStageFlags::MISS,
         HalaRayTracingShaderGroupType::GENERAL,
-        &format!("{}.miss.spv", desc.name),
+        &format!("{}.miss.spv", debug_name),
       )?;
       miss_shaders.push(shader);
     }
@@ -96,7 +106,7 @@ impl HalaRayTracingProgram {
             &format!("{}/{}", shader_dir.as_ref().to_string_lossy(), closest_hit_shader_file_path),
             HalaShaderStageFlags::CLOSEST_HIT,
             HalaRayTracingShaderGroupType::TRIANGLES_HIT_GROUP,
-            &format!("{}.chit.spv", desc.name),
+            &format!("{}.chit.spv", debug_name),
           )?)
         },
         None => None,
@@ -108,7 +118,7 @@ impl HalaRayTracingProgram {
             &format!("{}/{}", shader_dir.as_ref().to_string_lossy(), any_hit_shader_file_path),
             HalaShaderStageFlags::ANY_HIT,
             HalaRayTracingShaderGroupType::TRIANGLES_HIT_GROUP,
-            &format!("{}.ahit.spv", desc.name),
+            &format!("{}.ahit.spv", debug_name),
           )?)
         },
         None => None,
@@ -120,7 +130,7 @@ impl HalaRayTracingProgram {
             &format!("{}/{}", shader_dir.as_ref().to_string_lossy(), intersection_shader_file_path),
             HalaShaderStageFlags::INTERSECTION,
             HalaRayTracingShaderGroupType::PROCEDURAL_HIT_GROUP,
-            &format!("{}.isec.spv", desc.name),
+            &format!("{}.isec.spv", debug_name),
           )?)
         },
         None => None,
@@ -134,7 +144,7 @@ impl HalaRayTracingProgram {
         &format!("{}/{}", shader_dir.as_ref().to_string_lossy(), callable_shader_file_path),
         HalaShaderStageFlags::CALLABLE,
         HalaRayTracingShaderGroupType::GENERAL,
-        &format!("{}.call.spv", desc.name),
+        &format!("{}.call.spv", debug_name),
       )?;
       callable_shaders.push(shader);
     }
@@ -148,7 +158,7 @@ impl HalaRayTracingProgram {
       desc.ray_recursion_depth,
       pipeline_cache,
       false,
-      &format!("{}.raytracing_pipeline", desc.name),
+      &format!("{}.raytracing_pipeline", debug_name),
     )?;
     let sbt = HalaShaderBindingTable::new(
       logical_device.clone(),
@@ -159,7 +169,7 @@ impl HalaRayTracingProgram {
       &pipeline,
       staging_buffer,
       transfer_command_buffers,
-      &format!("{}.sbt", desc.name),
+      &format!("{}.sbt", debug_name),
     )?;
 
     Ok(Self {
@@ -172,6 +182,12 @@ impl HalaRayTracingProgram {
     })
   }
 
+  /// Get the raytracing pipeline.
+  /// return: The raytracing pipeline.
+  pub fn get_pso(&self) -> &HalaRayTracingPipeline {
+    &self.pipeline
+  }
+
   /// Bind the raytracing program.
   /// param index: The index.
   /// param command_buffers: The command buffers.
@@ -181,13 +197,15 @@ impl HalaRayTracingProgram {
     DS: AsRef<HalaDescriptorSet>
   {
     command_buffers.bind_ray_tracing_pipeline(index, &self.pipeline);
-    command_buffers.bind_ray_tracing_descriptor_sets(
-      index,
-      &self.pipeline,
-      0,
-      descriptor_sets,
-      &[],
-    );
+    if !descriptor_sets.is_empty() {
+      command_buffers.bind_ray_tracing_descriptor_sets(
+        index,
+        &self.pipeline,
+        0,
+        descriptor_sets,
+        &[],
+      );
+    }
   }
 
   /// Trace rays.
