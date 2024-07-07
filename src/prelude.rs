@@ -9,3 +9,7 @@ pub use crate::raytracing_program::{
   HalaRayTracingProgramDesc,
   HalaRayTracingProgram,
 };
+pub use crate::graphics_program::{
+  HalaGraphicsProgramDesc,
+  HalaGraphicsProgram,
+};

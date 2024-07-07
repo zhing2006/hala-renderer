@@ -200,4 +200,12 @@ impl HalaRayTracingProgram {
     command_buffers.trace_rays(index, &self.sbt, width, height, depth);
   }
 
+  /// Trace rays with indirect.
+  /// param index: The index.
+  /// param command_buffers: The command buffers.
+  /// param indirect_device_address: The indirect device address.
+  pub fn trace_rays_indirect(&self, index: usize, command_buffers: &HalaCommandBufferSet, indirect_device_address: u64) {
+    command_buffers.trace_rays_indirect(index, &self.sbt, indirect_device_address);
+  }
+
 }

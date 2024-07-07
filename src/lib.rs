@@ -7,3 +7,4 @@ pub mod envmap;
 pub mod scene;
 pub mod compute_program;
 pub mod raytracing_program;
+pub mod graphics_program;
