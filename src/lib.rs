@@ -6,3 +6,4 @@ pub mod rt_renderer;
 pub mod envmap;
 pub mod scene;
 pub mod compute_program;
+pub mod raytracing_program;

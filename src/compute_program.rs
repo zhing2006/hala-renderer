@@ -10,6 +10,7 @@ use hala_gfx::{
   HalaCommandBufferSet,
   HalaComputePipeline,
   HalaDescriptorSetLayout,
+  HalaDescriptorSet,
   HalaLogicalDevice,
   HalaPipelineCache,
   HalaShader,
@@ -19,13 +20,7 @@ use hala_gfx::{
 
 use crate::error::HalaRendererError;
 
-/// The compute program.
-pub struct HalaComputeProgram {
-  #[allow(dead_code)]
-  shader: HalaShader,
-  pipeline: HalaComputePipeline,
-}
-
+/// The compute program description.
 #[derive(Serialize, Deserialize)]
 pub struct HalaComputeProgramDesc {
   pub name: String,
@@ -132,6 +127,14 @@ where
   deserializer.deserialize_str(HalaStringToRayTracingShaderGroupTypeVisitor)
 }
 
+/// The compute program.
+pub struct HalaComputeProgram {
+  #[allow(dead_code)]
+  shader: HalaShader,
+  pipeline: HalaComputePipeline,
+}
+
+/// The compute program implementation.
 impl HalaComputeProgram {
 
   /// Create a new compute program.
@@ -172,7 +175,7 @@ impl HalaComputeProgram {
 
   pub fn bind<DS>(&self, index: usize, command_buffers: &HalaCommandBufferSet, descriptor_sets: &[DS])
   where
-    DS: AsRef<hala_gfx::HalaDescriptorSet>
+    DS: AsRef<HalaDescriptorSet>
   {
     command_buffers.bind_compute_pipeline(index, &self.pipeline);
     command_buffers.bind_compute_descriptor_sets(
