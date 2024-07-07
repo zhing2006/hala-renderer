@@ -135,6 +135,7 @@ pub struct HalaGraphicsProgram {
 }
 
 /// The implementation of the graphics program.
+#[allow(clippy::too_many_arguments)]
 impl HalaGraphicsProgram {
 
   pub fn new<P, DSL, VIAD, VIBD, PCR>(
