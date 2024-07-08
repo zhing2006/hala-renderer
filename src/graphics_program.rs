@@ -1,6 +1,5 @@
 use std::rc::Rc;
 use std::cell::RefCell;
-use std::path::Path;
 use std::fmt;
 
 use serde::{Serialize, Deserialize, Serializer, Deserializer};
@@ -32,6 +31,7 @@ use hala_gfx::{
 };
 
 use crate::error::HalaRendererError;
+use crate::shader_cache::HalaShaderCache;
 
 /// The graphics program description.
 #[derive(Serialize, Deserialize)]
@@ -124,13 +124,13 @@ where
 /// The graphics program.
 pub struct HalaGraphicsProgram {
   #[allow(dead_code)]
-  vertex_shader: Option<HalaShader>,
+  vertex_shader: Option<Rc<RefCell<HalaShader>>>,
   #[allow(dead_code)]
-  task_shader: Option<HalaShader>,
+  task_shader: Option<Rc<RefCell<HalaShader>>>,
   #[allow(dead_code)]
-  mesh_shader: Option<HalaShader>,
+  mesh_shader: Option<Rc<RefCell<HalaShader>>>,
   #[allow(dead_code)]
-  fragment_shader: HalaShader,
+  fragment_shader: Rc<RefCell<HalaShader>>,
   pipeline: HalaGraphicsPipeline,
 }
 
@@ -140,7 +140,6 @@ impl HalaGraphicsProgram {
 
   /// Create a new graphics program.
   /// param logical_device: The logical device.
-  /// param shader_dir: The shader directory.
   /// param swapchain: The swapchain.
   /// param descriptor_set_layouts: The descriptor set layouts.
   /// param flags: The pipeline create flags.
@@ -152,9 +151,8 @@ impl HalaGraphicsProgram {
   /// param pipeline_cache: The pipeline cache.
   /// param debug_name: The debug name.
   /// return: The result of the graphics program.
-  pub fn new<P, DSL, VIAD, VIBD, PCR>(
+  pub fn new<DSL, VIAD, VIBD, PCR>(
     logical_device: Rc<RefCell<HalaLogicalDevice>>,
-    shader_dir: P,
     swapchain: &HalaSwapchain,
     descriptor_set_layouts: &[DSL],
     flags: HalaPipelineCreateFlags,
@@ -167,16 +165,15 @@ impl HalaGraphicsProgram {
     debug_name: &str,
   ) -> Result<Self, HalaRendererError>
   where
-    P: AsRef<Path>,
     DSL: AsRef<HalaDescriptorSetLayout>,
     VIAD: AsRef<HalaVertexInputAttributeDescription>,
     VIBD: AsRef<HalaVertexInputBindingDescription>,
     PCR: AsRef<HalaPushConstantRange>,
   {
     let vertex_shader = if let Some(ref vertex_shader_file_path) = desc.vertex_shader_file_path {
-      Some(HalaShader::with_file(
+      Some(HalaShaderCache::get_instance().borrow_mut().load(
         logical_device.clone(),
-        &format!("{}/{}", shader_dir.as_ref().to_string_lossy(), vertex_shader_file_path),
+        vertex_shader_file_path,
         HalaShaderStageFlags::VERTEX,
         HalaRayTracingShaderGroupType::GENERAL,
         &format!("{}.vert.spv", debug_name),
@@ -186,9 +183,9 @@ impl HalaGraphicsProgram {
     };
 
     let task_shader = if let Some(ref task_shader_file_path) = desc.task_shader_file_path {
-      Some(HalaShader::with_file(
+      Some(HalaShaderCache::get_instance().borrow_mut().load(
         logical_device.clone(),
-        &format!("{}/{}", shader_dir.as_ref().to_string_lossy(), task_shader_file_path),
+        task_shader_file_path,
         HalaShaderStageFlags::TASK,
         HalaRayTracingShaderGroupType::GENERAL,
         &format!("{}.task.spv", debug_name),
@@ -198,9 +195,9 @@ impl HalaGraphicsProgram {
     };
 
     let mesh_shader = if let Some(ref mesh_shader_file_path) = desc.mesh_shader_file_path {
-      Some(HalaShader::with_file(
+      Some(HalaShaderCache::get_instance().borrow_mut().load(
         logical_device.clone(),
-        &format!("{}/{}", shader_dir.as_ref().to_string_lossy(), mesh_shader_file_path),
+        mesh_shader_file_path,
         HalaShaderStageFlags::MESH,
         HalaRayTracingShaderGroupType::GENERAL,
         &format!("{}.mesh.spv", debug_name),
@@ -209,44 +206,47 @@ impl HalaGraphicsProgram {
       None
     };
 
-    let fragment_shader = HalaShader::with_file(
+    let fragment_shader = HalaShaderCache::get_instance().borrow_mut().load(
       logical_device.clone(),
-      &format!("{}/{}", shader_dir.as_ref().to_string_lossy(), desc.fragment_shader_file_path),
+      &desc.fragment_shader_file_path,
       HalaShaderStageFlags::FRAGMENT,
       HalaRayTracingShaderGroupType::GENERAL,
       &format!("{}.frag.spv", debug_name),
     )?;
 
-    let mut shaders = Vec::new();
-    if let Some(ref vertex_shader) = vertex_shader {
-      shaders.push(vertex_shader);
-    }
-    if let Some(ref task_shader) = task_shader {
-      shaders.push(task_shader);
-    }
-    if let Some(ref mesh_shader) = mesh_shader {
-      shaders.push(mesh_shader);
-    }
-    shaders.push(&fragment_shader);
-    let pipeline = HalaGraphicsPipeline::new(
-      logical_device.clone(),
-      swapchain,
-      descriptor_set_layouts,
-      flags,
-      vertex_attribute_descriptions,
-      vertex_binding_descriptions,
-      push_constant_ranges,
-      desc.primitive_topology,
-      &desc.color_blend,
-      &desc.alpha_blend,
-      &desc.rasterizer_info,
-      &desc.depth_info,
-      desc.stencil_info.as_ref(),
-      shaders.as_slice(),
-      dynamic_states,
-      pipeline_cache,
-      &format!("{}.graphics_pipeline", debug_name),
-    )?;
+    let pipeline = {
+      let mut shaders = Vec::new();
+      if let Some(ref vertex_shader) = vertex_shader {
+        shaders.push(vertex_shader.borrow());
+      }
+      if let Some(ref task_shader) = task_shader {
+        shaders.push(task_shader.borrow());
+      }
+      if let Some(ref mesh_shader) = mesh_shader {
+        shaders.push(mesh_shader.borrow());
+      }
+      shaders.push(fragment_shader.borrow());
+      let pipeline = HalaGraphicsPipeline::new(
+        logical_device.clone(),
+        swapchain,
+        descriptor_set_layouts,
+        flags,
+        vertex_attribute_descriptions,
+        vertex_binding_descriptions,
+        push_constant_ranges,
+        desc.primitive_topology,
+        &desc.color_blend,
+        &desc.alpha_blend,
+        &desc.rasterizer_info,
+        &desc.depth_info,
+        desc.stencil_info.as_ref(),
+        &shaders.iter().map(|s| s.as_ref()).collect::<Vec<_>>(),
+        dynamic_states,
+        pipeline_cache,
+        &format!("{}.graphics_pipeline", debug_name),
+      )?;
+      pipeline
+    };
 
     Ok(Self {
       vertex_shader,
@@ -259,7 +259,6 @@ impl HalaGraphicsProgram {
 
   /// Create a new graphics program with custom render target.
   /// param logical_device: The logical device.
-  /// param shader_dir: The shader directory.
   /// param color_images: The color images.
   /// param depth_image: The depth image.
   /// param descriptor_set_layouts: The descriptor set layouts.
@@ -272,9 +271,8 @@ impl HalaGraphicsProgram {
   /// param pipeline_cache: The pipeline cache.
   /// param debug_name: The debug name.
   /// return: The result of the graphics program.
-  pub fn with_rt<P, T, DSL, VIAD, VIBD, PCR>(
+  pub fn with_rt<T, DSL, VIAD, VIBD, PCR>(
     logical_device: Rc<RefCell<HalaLogicalDevice>>,
-    shader_dir: P,
     color_images: &[T],
     depth_image: Option<&T>,
     descriptor_set_layouts: &[DSL],
@@ -288,7 +286,6 @@ impl HalaGraphicsProgram {
     debug_name: &str,
   ) -> Result<Self, HalaRendererError>
   where
-    P: AsRef<Path>,
     T: AsRef<HalaImage>,
     DSL: AsRef<HalaDescriptorSetLayout>,
     VIAD: AsRef<HalaVertexInputAttributeDescription>,
@@ -296,9 +293,9 @@ impl HalaGraphicsProgram {
     PCR: AsRef<HalaPushConstantRange>,
   {
     let vertex_shader = if let Some(ref vertex_shader_file_path) = desc.vertex_shader_file_path {
-      Some(HalaShader::with_file(
+      Some(HalaShaderCache::get_instance().borrow_mut().load(
         logical_device.clone(),
-        &format!("{}/{}", shader_dir.as_ref().to_string_lossy(), vertex_shader_file_path),
+        vertex_shader_file_path,
         HalaShaderStageFlags::VERTEX,
         HalaRayTracingShaderGroupType::GENERAL,
         &format!("{}.vert.spv", debug_name),
@@ -308,9 +305,9 @@ impl HalaGraphicsProgram {
     };
 
     let task_shader = if let Some(ref task_shader_file_path) = desc.task_shader_file_path {
-      Some(HalaShader::with_file(
+      Some(HalaShaderCache::get_instance().borrow_mut().load(
         logical_device.clone(),
-        &format!("{}/{}", shader_dir.as_ref().to_string_lossy(), task_shader_file_path),
+        task_shader_file_path,
         HalaShaderStageFlags::TASK,
         HalaRayTracingShaderGroupType::GENERAL,
         &format!("{}.task.spv", debug_name),
@@ -320,9 +317,9 @@ impl HalaGraphicsProgram {
     };
 
     let mesh_shader = if let Some(ref mesh_shader_file_path) = desc.mesh_shader_file_path {
-      Some(HalaShader::with_file(
+      Some(HalaShaderCache::get_instance().borrow_mut().load(
         logical_device.clone(),
-        &format!("{}/{}", shader_dir.as_ref().to_string_lossy(), mesh_shader_file_path),
+        mesh_shader_file_path,
         HalaShaderStageFlags::MESH,
         HalaRayTracingShaderGroupType::GENERAL,
         &format!("{}.mesh.spv", debug_name),
@@ -331,45 +328,48 @@ impl HalaGraphicsProgram {
       None
     };
 
-    let fragment_shader = HalaShader::with_file(
+    let fragment_shader = HalaShaderCache::get_instance().borrow_mut().load(
       logical_device.clone(),
-      &format!("{}/{}", shader_dir.as_ref().to_string_lossy(), desc.fragment_shader_file_path),
+      &desc.fragment_shader_file_path,
       HalaShaderStageFlags::FRAGMENT,
       HalaRayTracingShaderGroupType::GENERAL,
       &format!("{}.frag.spv", debug_name),
     )?;
 
-    let mut shaders = Vec::new();
-    if let Some(ref vertex_shader) = vertex_shader {
-      shaders.push(vertex_shader);
-    }
-    if let Some(ref task_shader) = task_shader {
-      shaders.push(task_shader);
-    }
-    if let Some(ref mesh_shader) = mesh_shader {
-      shaders.push(mesh_shader);
-    }
-    shaders.push(&fragment_shader);
-    let pipeline = HalaGraphicsPipeline::with_rt(
-      logical_device.clone(),
-      color_images,
-      depth_image,
-      descriptor_set_layouts,
-      flags,
-      vertex_attribute_descriptions,
-      vertex_binding_descriptions,
-      push_constant_ranges,
-      desc.primitive_topology,
-      &desc.color_blend,
-      &desc.alpha_blend,
-      &desc.rasterizer_info,
-      &desc.depth_info,
-      desc.stencil_info.as_ref(),
-      shaders.as_slice(),
-      dynamic_states,
-      pipeline_cache,
-      &format!("{}.graphics_pipeline", debug_name),
-    )?;
+    let pipeline = {
+      let mut shaders = Vec::new();
+      if let Some(ref vertex_shader) = vertex_shader {
+        shaders.push(vertex_shader.borrow());
+      }
+      if let Some(ref task_shader) = task_shader {
+        shaders.push(task_shader.borrow());
+      }
+      if let Some(ref mesh_shader) = mesh_shader {
+        shaders.push(mesh_shader.borrow());
+      }
+      shaders.push(fragment_shader.borrow());
+      let pipeline = HalaGraphicsPipeline::with_rt(
+        logical_device.clone(),
+        color_images,
+        depth_image,
+        descriptor_set_layouts,
+        flags,
+        vertex_attribute_descriptions,
+        vertex_binding_descriptions,
+        push_constant_ranges,
+        desc.primitive_topology,
+        &desc.color_blend,
+        &desc.alpha_blend,
+        &desc.rasterizer_info,
+        &desc.depth_info,
+        desc.stencil_info.as_ref(),
+        &shaders.iter().map(|s| s.as_ref()).collect::<Vec<_>>(),
+        dynamic_states,
+        pipeline_cache,
+        &format!("{}.graphics_pipeline", debug_name),
+      )?;
+      pipeline
+    };
 
     Ok(Self {
       vertex_shader,

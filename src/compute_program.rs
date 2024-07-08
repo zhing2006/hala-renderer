@@ -1,6 +1,5 @@
 use std::rc::Rc;
 use std::cell::RefCell;
-use std::path::Path;
 
 use serde::{Serialize, Deserialize};
 
@@ -18,6 +17,7 @@ use hala_gfx::{
 };
 
 use crate::error::HalaRendererError;
+use crate::shader_cache::HalaShaderCache;
 
 /// The compute program description.
 #[derive(Serialize, Deserialize)]
@@ -28,7 +28,7 @@ pub struct HalaComputeProgramDesc {
 /// The compute program.
 pub struct HalaComputeProgram {
   #[allow(dead_code)]
-  shader: HalaShader,
+  shader: Rc<RefCell<HalaShader>>,
   pipeline: HalaComputePipeline,
 }
 
@@ -42,21 +42,22 @@ impl HalaComputeProgram {
   /// param pipeline_cache: The pipeline cache.
   /// param name: The debug name.
   /// return: The compute program.
-  pub fn new<P, DSL>(
+  pub fn new<DSL>(
     logical_device: Rc<RefCell<HalaLogicalDevice>>,
-    shader_dir: P,
     descriptor_set_layouts: &[DSL],
     desc: &HalaComputeProgramDesc,
     pipeline_cache: Option<&HalaPipelineCache>,
     debug_name: &str,
   ) -> Result<Self, HalaRendererError>
   where
-    P: AsRef<Path>,
     DSL: AsRef<HalaDescriptorSetLayout>,
   {
-    let shader = HalaShader::with_file(
+    let shader_cache = HalaShaderCache::get_instance();
+    let mut shader_cache = shader_cache.borrow_mut();
+
+    let shader = shader_cache.load(
       logical_device.clone(),
-      &format!("{}/{}", shader_dir.as_ref().to_string_lossy(), desc.shader_file_path),
+      &desc.shader_file_path,
       HalaShaderStageFlags::COMPUTE,
       HalaRayTracingShaderGroupType::GENERAL,
       &format!("{}.comp.spv", debug_name),
@@ -64,7 +65,7 @@ impl HalaComputeProgram {
     let pipeline = HalaComputePipeline::new(
       logical_device.clone(),
       descriptor_set_layouts,
-      &shader,
+      shader.borrow().as_ref(),
       pipeline_cache,
       &format!("{}.compute_pipeline", debug_name),
     )?;

@@ -1,6 +1,5 @@
 use std::rc::Rc;
 use std::cell::RefCell;
-use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
@@ -19,6 +18,7 @@ use hala_gfx::{
 };
 
 use crate::error::HalaRendererError;
+use crate::shader_cache::HalaShaderCache;
 
 /// The raytracing hit shader description.
 #[derive(Serialize, Deserialize)]
@@ -40,10 +40,10 @@ pub struct HalaRayTracingProgramDesc {
 
 /// The raytracing program.
 pub struct HalaRayTracingProgram {
-  pub raygen_shaders: Vec<HalaShader>,
-  pub miss_shaders: Vec<HalaShader>,
-  pub hit_shaders: Vec<(Option<HalaShader>, Option<HalaShader>, Option<HalaShader>)>,
-  pub callable_shaders: Vec<HalaShader>,
+  pub raygen_shaders: Vec<Rc<RefCell<HalaShader>>>,
+  pub miss_shaders: Vec<Rc<RefCell<HalaShader>>>,
+  pub hit_shaders: Vec<(Option<Rc<RefCell<HalaShader>>>, Option<Rc<RefCell<HalaShader>>>, Option<Rc<RefCell<HalaShader>>>)>,
+  pub callable_shaders: Vec<Rc<RefCell<HalaShader>>>,
   pub pipeline: HalaRayTracingPipeline,
   pub sbt: HalaShaderBindingTable,
 }
@@ -53,7 +53,6 @@ impl HalaRayTracingProgram {
 
   /// Create a new raytracing program.
   /// param logical_device: The logical device.
-  /// param shader_dir: The shader directory.
   /// param descriptor_set_layouts: The descriptor set layouts.
   /// param desc: The description.
   /// param pipeline_cache: The pipeline cache.
@@ -61,9 +60,8 @@ impl HalaRayTracingProgram {
   /// param transfer_command_buffers: The transfer command buffers.
   /// param debug_name: The debug name.
   /// return: The raytracing program.
-  pub fn new<P, DSL>(
+  pub fn new<DSL>(
     logical_device: Rc<RefCell<HalaLogicalDevice>>,
-    shader_dir: P,
     descriptor_set_layouts: &[DSL],
     desc: &HalaRayTracingProgramDesc,
     pipeline_cache: Option<&HalaPipelineCache>,
@@ -72,14 +70,13 @@ impl HalaRayTracingProgram {
     debug_name: &str,
   ) -> Result<Self, HalaRendererError>
   where
-    P: AsRef<Path>,
     DSL: AsRef<HalaDescriptorSetLayout>,
   {
     let mut raygen_shaders = Vec::new();
     for raygen_shader_file_path in &desc.raygen_shader_file_paths {
-      let shader = HalaShader::with_file(
+      let shader = HalaShaderCache::get_instance().borrow_mut().load(
         logical_device.clone(),
-        &format!("{}/{}", shader_dir.as_ref().to_string_lossy(), raygen_shader_file_path),
+        raygen_shader_file_path,
         HalaShaderStageFlags::RAYGEN,
         HalaRayTracingShaderGroupType::GENERAL,
         &format!("{}.rgen.spv", debug_name),
@@ -88,9 +85,9 @@ impl HalaRayTracingProgram {
     }
     let mut miss_shaders = Vec::new();
     for miss_shader_file_path in &desc.miss_shader_file_paths {
-      let shader = HalaShader::with_file(
+      let shader = HalaShaderCache::get_instance().borrow_mut().load(
         logical_device.clone(),
-        &format!("{}/{}", shader_dir.as_ref().to_string_lossy(), miss_shader_file_path),
+        miss_shader_file_path,
         HalaShaderStageFlags::MISS,
         HalaRayTracingShaderGroupType::GENERAL,
         &format!("{}.miss.spv", debug_name),
@@ -101,9 +98,9 @@ impl HalaRayTracingProgram {
     for hit_shader_desc in &desc.hit_shader_file_paths {
       let closest_hit_shader = match hit_shader_desc.closest_hit_shader_file_path {
         Some(ref closest_hit_shader_file_path) => {
-          Some(HalaShader::with_file(
+          Some(HalaShaderCache::get_instance().borrow_mut().load(
             logical_device.clone(),
-            &format!("{}/{}", shader_dir.as_ref().to_string_lossy(), closest_hit_shader_file_path),
+            closest_hit_shader_file_path,
             HalaShaderStageFlags::CLOSEST_HIT,
             HalaRayTracingShaderGroupType::TRIANGLES_HIT_GROUP,
             &format!("{}.chit.spv", debug_name),
@@ -113,9 +110,9 @@ impl HalaRayTracingProgram {
       };
       let any_hit_shader = match hit_shader_desc.any_hit_shader_file_path {
         Some(ref any_hit_shader_file_path) => {
-          Some(HalaShader::with_file(
+          Some(HalaShaderCache::get_instance().borrow_mut().load(
             logical_device.clone(),
-            &format!("{}/{}", shader_dir.as_ref().to_string_lossy(), any_hit_shader_file_path),
+            any_hit_shader_file_path,
             HalaShaderStageFlags::ANY_HIT,
             HalaRayTracingShaderGroupType::TRIANGLES_HIT_GROUP,
             &format!("{}.ahit.spv", debug_name),
@@ -125,9 +122,9 @@ impl HalaRayTracingProgram {
       };
       let intersection_shader = match hit_shader_desc.intersection_shader_file_path {
         Some(ref intersection_shader_file_path) => {
-          Some(HalaShader::with_file(
+          Some(HalaShaderCache::get_instance().borrow_mut().load(
             logical_device.clone(),
-            &format!("{}/{}", shader_dir.as_ref().to_string_lossy(), intersection_shader_file_path),
+            intersection_shader_file_path,
             HalaShaderStageFlags::INTERSECTION,
             HalaRayTracingShaderGroupType::PROCEDURAL_HIT_GROUP,
             &format!("{}.isec.spv", debug_name),
@@ -139,38 +136,63 @@ impl HalaRayTracingProgram {
     }
     let mut callable_shaders = Vec::new();
     for callable_shader_file_path in &desc.callable_shader_file_paths {
-      let shader = HalaShader::with_file(
+      let shader = HalaShaderCache::get_instance().borrow_mut().load(
         logical_device.clone(),
-        &format!("{}/{}", shader_dir.as_ref().to_string_lossy(), callable_shader_file_path),
+        callable_shader_file_path,
         HalaShaderStageFlags::CALLABLE,
         HalaRayTracingShaderGroupType::GENERAL,
         &format!("{}.call.spv", debug_name),
       )?;
       callable_shaders.push(shader);
     }
-    let pipeline = HalaRayTracingPipeline::new(
-      logical_device.clone(),
-      descriptor_set_layouts,
-      &raygen_shaders,
-      &miss_shaders,
-      &hit_shaders,
-      &callable_shaders,
-      desc.ray_recursion_depth,
-      pipeline_cache,
-      false,
-      &format!("{}.raytracing_pipeline", debug_name),
-    )?;
-    let sbt = HalaShaderBindingTable::new(
-      logical_device.clone(),
-      &raygen_shaders,
-      &miss_shaders,
-      &hit_shaders,
-      &callable_shaders,
-      &pipeline,
-      staging_buffer,
-      transfer_command_buffers,
-      &format!("{}.sbt", debug_name),
-    )?;
+
+    let (pipeline, sbt) = {
+      let raygen_shaders = raygen_shaders.iter().map(|shader| { shader.borrow() }).collect::<Vec<_>>();
+      let miss_shaders = miss_shaders.iter().map(|shader| { shader.borrow() }).collect::<Vec<_>>();
+      let hit_shaders = hit_shaders.iter().map(|(closest_hit_shader, any_hit_shader, intersection_shader)| {
+        (
+          closest_hit_shader.as_ref().map_or(None, |shader| Some(shader.borrow())),
+          any_hit_shader.as_ref().map_or(None, |shader| Some(shader.borrow())),
+          intersection_shader.as_ref().map_or(None, |shader| Some(shader.borrow())),
+        )
+      }).collect::<Vec<_>>();
+      let callable_shaders = callable_shaders.iter().map(|shader| { shader.borrow() }).collect::<Vec<_>>();
+      let r = raygen_shaders.iter().map(|shader| shader.as_ref()).collect::<Vec<_>>();
+      let m = miss_shaders.iter().map(|shader| shader.as_ref()).collect::<Vec<_>>();
+      let h = hit_shaders.iter().map(|(closest_hit_shader, any_hit_shader, intersection_shader)| {
+        (
+          closest_hit_shader.as_ref().map_or(None, |shader| Some(shader.as_ref())),
+          any_hit_shader.as_ref().map_or(None, |shader| Some(shader.as_ref())),
+          intersection_shader.as_ref().map_or(None, |shader| Some(shader.as_ref())),
+        )
+      }).collect::<Vec<_>>();
+      let c = callable_shaders.iter().map(|shader| shader.as_ref()).collect::<Vec<_>>();
+      let pipeline = HalaRayTracingPipeline::new(
+        logical_device.clone(),
+        descriptor_set_layouts,
+        r.as_slice(),
+        m.as_slice(),
+        h.as_slice(),
+        c.as_slice(),
+        desc.ray_recursion_depth,
+        pipeline_cache,
+        false,
+        &format!("{}.raytracing_pipeline", debug_name),
+      )?;
+      let sbt = HalaShaderBindingTable::new(
+        logical_device.clone(),
+        r.as_slice(),
+        m.as_slice(),
+        h.as_slice(),
+        c.as_slice(),
+        &pipeline,
+        staging_buffer,
+        transfer_command_buffers,
+        &format!("{}.sbt", debug_name),
+      )?;
+
+      (pipeline, sbt)
+    };
 
     Ok(Self {
       raygen_shaders,
