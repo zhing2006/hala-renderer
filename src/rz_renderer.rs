@@ -322,7 +322,6 @@ impl HalaRendererTrait for HalaRenderer {
         ],
         "textures.descriptor_set_layout",
       )?,
-      1,
       0,
       "textures.descriptor_set",
     )?;
@@ -529,7 +528,7 @@ impl HalaRendererTrait for HalaRenderer {
             }
             command_buffers.push_constants(
               index,
-              &self.pso[material_type],
+              self.pso[material_type].layout,
               if !self.use_mesh_shader { hala_gfx::HalaShaderStageFlags::VERTEX } else { hala_gfx::HalaShaderStageFlags::TASK | hala_gfx::HalaShaderStageFlags::MESH }
                 | hala_gfx::HalaShaderStageFlags::FRAGMENT,
               0,
@@ -701,7 +700,6 @@ impl HalaRenderer {
         ],
         "main_static.descriptor_set_layout",
       )?,
-      1,
       0,
       "main_static.descriptor_set",
     )?;

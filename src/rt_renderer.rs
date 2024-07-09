@@ -204,7 +204,6 @@ impl HalaRendererTrait for HalaRenderer {
         ],
         "textures.descriptor_set_layout",
       )?,
-      1,
       0,
       "textures.descriptor_set",
     )?;
@@ -241,9 +240,10 @@ impl HalaRendererTrait for HalaRenderer {
     };
 
     // Create pipeline.
-    let pipeline = hala_gfx::HalaRayTracingPipeline::new(
+    let pipeline = hala_gfx::HalaRayTracingPipeline::new::<_, &hala_gfx::HalaPushConstantRange, _>(
       Rc::clone(&context.logical_device),
       &[&self.static_descriptor_set.layout, &dynamic_descriptor_set.layout, &textures_descriptor_set.layout],
+      &[],
       self.raygen_shaders.as_slice(),
       self.miss_shaders.as_slice(),
       self.hit_shaders.as_slice(),
@@ -754,7 +754,6 @@ impl HalaRenderer {
         ],
         "main_static.descriptor_set_layout",
       )?,
-      1,
       0,
       "main_static.descriptor_set",
     )?;

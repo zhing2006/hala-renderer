@@ -8,6 +8,7 @@ use hala_gfx::{
   HalaComputePipeline,
   HalaDescriptorSet,
   HalaDescriptorSetLayout,
+  HalaDescriptorType,
   HalaLogicalDevice,
   HalaPipelineCache,
   HalaRayTracingShaderGroupType,
@@ -23,6 +24,8 @@ use crate::shader_cache::HalaShaderCache;
 #[derive(Serialize, Deserialize)]
 pub struct HalaComputeProgramDesc {
   pub shader_file_path: String,
+  pub push_constant_size: u32,
+  pub bindings: Vec<HalaDescriptorType>,
 }
 
 /// The compute program.
@@ -62,9 +65,21 @@ impl HalaComputeProgram {
       HalaRayTracingShaderGroupType::GENERAL,
       &format!("{}.comp.spv", debug_name),
     )?;
+    let push_constant_ranges = if desc.push_constant_size > 0 {
+      &[
+        hala_gfx::HalaPushConstantRange {
+          stage_flags: HalaShaderStageFlags::COMPUTE,
+          offset: 0,
+          size: desc.push_constant_size,
+        },
+      ]
+    } else {
+      &[] as &[hala_gfx::HalaPushConstantRange]
+    };
     let pipeline = HalaComputePipeline::new(
       logical_device.clone(),
       descriptor_set_layouts,
+      push_constant_ranges,
       shader.borrow().as_ref(),
       pipeline_cache,
       &format!("{}.compute_pipeline", debug_name),
@@ -77,6 +92,26 @@ impl HalaComputeProgram {
   /// return: The compute pipeline.
   pub fn get_pso(&self) -> &HalaComputePipeline {
     &self.pipeline
+  }
+
+  /// Push constants.
+  /// param index: The index of the command buffer.
+  /// param command_buffers: The command buffers.
+  /// param offset: The offset.
+  /// param data: The data.
+  pub fn push_constants(&self, index: usize, command_buffers: &HalaCommandBufferSet, offset: u32, data: &[u8]) {
+    let shader_stage = HalaShaderStageFlags::COMPUTE;
+    command_buffers.push_constants(index, self.pipeline.layout, shader_stage, offset, data);
+  }
+
+  /// Push constants f32.
+  /// param index: The index of the command buffer.
+  /// param command_buffers: The command buffers.
+  /// param offset: The offset.
+  /// param data: The data.
+  pub fn push_constants_f32(&self, index: usize, command_buffers: &HalaCommandBufferSet, offset: u32, data: &[f32]) {
+    let shader_stage = HalaShaderStageFlags::COMPUTE;
+    command_buffers.push_constants_f32(index, self.pipeline.layout, shader_stage, offset, data);
   }
 
   /// Bind the compute program.

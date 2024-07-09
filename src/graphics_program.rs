@@ -1,9 +1,7 @@
 use std::rc::Rc;
 use std::cell::RefCell;
-use std::fmt;
 
-use serde::{Serialize, Deserialize, Serializer, Deserializer};
-use serde::de::{self, Unexpected, Visitor};
+use serde::{Serialize, Deserialize};
 
 use hala_gfx::{
   HalaBlendState,
@@ -40,85 +38,13 @@ pub struct HalaGraphicsProgramDesc {
   pub task_shader_file_path: Option<String>,
   pub mesh_shader_file_path: Option<String>,
   pub fragment_shader_file_path: String,
-  #[serde(serialize_with = "primitive_topology_serialize", deserialize_with = "primitive_topology_deserialize")]
+  pub push_constant_size: u32,
   pub primitive_topology: HalaPrimitiveTopology,
   pub color_blend: HalaBlendState,
   pub alpha_blend: HalaBlendState,
   pub rasterizer_info: HalaRasterizerState,
   pub depth_info: HalaDepthState,
   pub stencil_info: Option<HalaStencilState>,
-}
-
-fn primitive_topology_serialize<S>(value: &HalaPrimitiveTopology, serializer: S) -> Result<S::Ok, S::Error>
-where
-  S: Serializer,
-{
-  let s = match *value {
-    HalaPrimitiveTopology::POINT_LIST => "point_list",
-    HalaPrimitiveTopology::LINE_LIST => "list_list",
-    HalaPrimitiveTopology::LINE_STRIP => "line_strip",
-    HalaPrimitiveTopology::TRIANGLE_LIST => "triangle_list",
-    HalaPrimitiveTopology::TRIANGLE_STRIP => "triangle_strip",
-    HalaPrimitiveTopology::TRIANGLE_FAN => "triangle_fan",
-    HalaPrimitiveTopology::LINE_LIST_WITH_ADJACENCY => "line_list_with_adjacency",
-    HalaPrimitiveTopology::LINE_STRIP_WITH_ADJACENCY => "line_strip_with_adjacency",
-    HalaPrimitiveTopology::TRIANGLE_LIST_WITH_ADJACENCY => "triangle_list_with_adjacency",
-    HalaPrimitiveTopology::TRIANGLE_STRIP_WITH_ADJACENCY => "triangle_strip_with_adjacency",
-    HalaPrimitiveTopology::PATCH_LIST => "patch_list",
-    _ => "default",
-  };
-
-  serializer.serialize_str(s)
-}
-
-/// Deserialize the primitive topology.
-fn primitive_topology_deserialize<'de, D>(deserializer: D) -> Result<HalaPrimitiveTopology, D::Error>
-where
-  D: Deserializer<'de>,
-{
-  struct HalaPrimitiveTopologyVisitor;
-
-  impl<'de> Visitor<'de> for HalaPrimitiveTopologyVisitor {
-    type Value = HalaPrimitiveTopology;
-
-    fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-      formatter.write_str("a string of primitive topology")
-    }
-
-    fn visit_str<E>(self, value: &str) -> Result<HalaPrimitiveTopology, E>
-    where
-      E: de::Error,
-    {
-      match value {
-        "POINT_LIST" => Ok(HalaPrimitiveTopology::POINT_LIST),
-        "point_list" => Ok(HalaPrimitiveTopology::POINT_LIST),
-        "LINE_LIST" => Ok(HalaPrimitiveTopology::LINE_LIST),
-        "line_list" => Ok(HalaPrimitiveTopology::LINE_LIST),
-        "LINE_STRIP" => Ok(HalaPrimitiveTopology::LINE_STRIP),
-        "line_strip" => Ok(HalaPrimitiveTopology::LINE_STRIP),
-        "TRIANGLE_LIST" => Ok(HalaPrimitiveTopology::TRIANGLE_LIST),
-        "triangle_list" => Ok(HalaPrimitiveTopology::TRIANGLE_LIST),
-        "TRIANGLE_STRIP" => Ok(HalaPrimitiveTopology::TRIANGLE_STRIP),
-        "triangle_strip" => Ok(HalaPrimitiveTopology::TRIANGLE_STRIP),
-        "TRIANGLE_FAN" => Ok(HalaPrimitiveTopology::TRIANGLE_FAN),
-        "triangle_fan" => Ok(HalaPrimitiveTopology::TRIANGLE_FAN),
-        "LINE_LIST_WITH_ADJACENCY" => Ok(HalaPrimitiveTopology::LINE_LIST_WITH_ADJACENCY),
-        "line_list_with_adjacency" => Ok(HalaPrimitiveTopology::LINE_LIST_WITH_ADJACENCY),
-        "LINE_STRIP_WITH_ADJACENCY" => Ok(HalaPrimitiveTopology::LINE_STRIP_WITH_ADJACENCY),
-        "line_strip_with_adjacency" => Ok(HalaPrimitiveTopology::LINE_STRIP_WITH_ADJACENCY),
-        "TRIANGLE_LIST_WITH_ADJACENCY" => Ok(HalaPrimitiveTopology::TRIANGLE_LIST_WITH_ADJACENCY),
-        "triangle_list_with_adjacency" => Ok(HalaPrimitiveTopology::TRIANGLE_LIST_WITH_ADJACENCY),
-        "TRIANGLE_STRIP_WITH_ADJACENCY" => Ok(HalaPrimitiveTopology::TRIANGLE_STRIP_WITH_ADJACENCY),
-        "triangle_strip_with_adjacency" => Ok(HalaPrimitiveTopology::TRIANGLE_STRIP_WITH_ADJACENCY),
-        "PATCH_LIST" => Ok(HalaPrimitiveTopology::PATCH_LIST),
-        "patch_list" => Ok(HalaPrimitiveTopology::PATCH_LIST),
-        "default" => Ok(HalaPrimitiveTopology::default()),
-                _ => return Err(de::Error::invalid_value(Unexpected::Str(value), &"a primitive topology")),
-      }
-    }
-  }
-
-  deserializer.deserialize_str(HalaPrimitiveTopologyVisitor)
 }
 
 /// The graphics program.
@@ -145,20 +71,18 @@ impl HalaGraphicsProgram {
   /// param flags: The pipeline create flags.
   /// param vertex_attribute_descriptions: The vertex attribute descriptions.
   /// param vertex_binding_descriptions: The vertex binding descriptions.
-  /// param push_constant_ranges: The push constant ranges.
   /// param dynamic_states: The dynamic states.
   /// param desc: The graphics program description.
   /// param pipeline_cache: The pipeline cache.
   /// param debug_name: The debug name.
   /// return: The result of the graphics program.
-  pub fn new<DSL, VIAD, VIBD, PCR>(
+  pub fn new<DSL, VIAD, VIBD>(
     logical_device: Rc<RefCell<HalaLogicalDevice>>,
     swapchain: &HalaSwapchain,
     descriptor_set_layouts: &[DSL],
     flags: HalaPipelineCreateFlags,
     vertex_attribute_descriptions: &[VIAD],
     vertex_binding_descriptions: &[VIBD],
-    push_constant_ranges: &[PCR],
     dynamic_states: &[HalaDynamicState],
     desc: &HalaGraphicsProgramDesc,
     pipeline_cache: Option<&HalaPipelineCache>,
@@ -168,9 +92,10 @@ impl HalaGraphicsProgram {
     DSL: AsRef<HalaDescriptorSetLayout>,
     VIAD: AsRef<HalaVertexInputAttributeDescription>,
     VIBD: AsRef<HalaVertexInputBindingDescription>,
-    PCR: AsRef<HalaPushConstantRange>,
   {
+    let mut shader_stage = HalaShaderStageFlags::FRAGMENT;
     let vertex_shader = if let Some(ref vertex_shader_file_path) = desc.vertex_shader_file_path {
+      shader_stage |= HalaShaderStageFlags::VERTEX;
       Some(HalaShaderCache::get_instance().borrow_mut().load(
         logical_device.clone(),
         vertex_shader_file_path,
@@ -183,6 +108,7 @@ impl HalaGraphicsProgram {
     };
 
     let task_shader = if let Some(ref task_shader_file_path) = desc.task_shader_file_path {
+      shader_stage |= HalaShaderStageFlags::TASK;
       Some(HalaShaderCache::get_instance().borrow_mut().load(
         logical_device.clone(),
         task_shader_file_path,
@@ -195,6 +121,7 @@ impl HalaGraphicsProgram {
     };
 
     let mesh_shader = if let Some(ref mesh_shader_file_path) = desc.mesh_shader_file_path {
+      shader_stage |= HalaShaderStageFlags::MESH;
       Some(HalaShaderCache::get_instance().borrow_mut().load(
         logical_device.clone(),
         mesh_shader_file_path,
@@ -226,6 +153,17 @@ impl HalaGraphicsProgram {
         shaders.push(mesh_shader.borrow());
       }
       shaders.push(fragment_shader.borrow());
+      let push_constant_ranges = if desc.push_constant_size > 0 {
+        &[
+          HalaPushConstantRange {
+            stage_flags: shader_stage,
+            offset: 0,
+            size: desc.push_constant_size,
+          },
+        ]
+      } else {
+        &[] as &[HalaPushConstantRange]
+      };
       let pipeline = HalaGraphicsPipeline::new(
         logical_device.clone(),
         swapchain,
@@ -265,13 +203,12 @@ impl HalaGraphicsProgram {
   /// param flags: The pipeline create flags.
   /// param vertex_attribute_descriptions: The vertex attribute descriptions.
   /// param vertex_binding_descriptions: The vertex binding descriptions.
-  /// param push_constant_ranges: The push constant ranges.
   /// param dynamic_states: The dynamic states.
   /// param desc: The graphics program description.
   /// param pipeline_cache: The pipeline cache.
   /// param debug_name: The debug name.
   /// return: The result of the graphics program.
-  pub fn with_rt<T, DSL, VIAD, VIBD, PCR>(
+  pub fn with_rt<T, DSL, VIAD, VIBD>(
     logical_device: Rc<RefCell<HalaLogicalDevice>>,
     color_images: &[T],
     depth_image: Option<&T>,
@@ -279,7 +216,6 @@ impl HalaGraphicsProgram {
     flags: HalaPipelineCreateFlags,
     vertex_attribute_descriptions: &[VIAD],
     vertex_binding_descriptions: &[VIBD],
-    push_constant_ranges: &[PCR],
     dynamic_states: &[HalaDynamicState],
     desc: &HalaGraphicsProgramDesc,
     pipeline_cache: Option<&HalaPipelineCache>,
@@ -290,9 +226,10 @@ impl HalaGraphicsProgram {
     DSL: AsRef<HalaDescriptorSetLayout>,
     VIAD: AsRef<HalaVertexInputAttributeDescription>,
     VIBD: AsRef<HalaVertexInputBindingDescription>,
-    PCR: AsRef<HalaPushConstantRange>,
   {
+    let mut shader_stage = HalaShaderStageFlags::FRAGMENT;
     let vertex_shader = if let Some(ref vertex_shader_file_path) = desc.vertex_shader_file_path {
+      shader_stage |= HalaShaderStageFlags::VERTEX;
       Some(HalaShaderCache::get_instance().borrow_mut().load(
         logical_device.clone(),
         vertex_shader_file_path,
@@ -305,6 +242,7 @@ impl HalaGraphicsProgram {
     };
 
     let task_shader = if let Some(ref task_shader_file_path) = desc.task_shader_file_path {
+      shader_stage |= HalaShaderStageFlags::TASK;
       Some(HalaShaderCache::get_instance().borrow_mut().load(
         logical_device.clone(),
         task_shader_file_path,
@@ -317,6 +255,7 @@ impl HalaGraphicsProgram {
     };
 
     let mesh_shader = if let Some(ref mesh_shader_file_path) = desc.mesh_shader_file_path {
+      shader_stage |= HalaShaderStageFlags::MESH;
       Some(HalaShaderCache::get_instance().borrow_mut().load(
         logical_device.clone(),
         mesh_shader_file_path,
@@ -348,6 +287,17 @@ impl HalaGraphicsProgram {
         shaders.push(mesh_shader.borrow());
       }
       shaders.push(fragment_shader.borrow());
+      let push_constant_ranges = if desc.push_constant_size > 0 {
+        &[
+          HalaPushConstantRange {
+            stage_flags: shader_stage,
+            offset: 0,
+            size: desc.push_constant_size,
+          },
+        ]
+      } else {
+        &[] as &[HalaPushConstantRange]
+      };
       let pipeline = HalaGraphicsPipeline::with_rt(
         logical_device.clone(),
         color_images,
@@ -406,6 +356,11 @@ impl HalaGraphicsProgram {
     }
   }
 
+  /// Push constants.
+  /// param index: The index of the command buffer.
+  /// param command_buffers: The command buffers.
+  /// param offset: The offset.
+  /// param data: The data.
   pub fn push_constants(&self, index: usize, command_buffers: &HalaCommandBufferSet, offset: u32, data: &[u8]) {
     let mut shader_stage = HalaShaderStageFlags::FRAGMENT;
     if self.vertex_shader.is_some() {
@@ -417,9 +372,14 @@ impl HalaGraphicsProgram {
     if self.mesh_shader.is_some() {
       shader_stage |= HalaShaderStageFlags::MESH;
     }
-    command_buffers.push_constants(index, &self.pipeline, shader_stage, offset, data);
+    command_buffers.push_constants(index, self.pipeline.layout, shader_stage, offset, data);
   }
 
+  /// Push constants f32.
+  /// param index: The index of the command buffer.
+  /// param command_buffers: The command buffers.
+  /// param offset: The offset.
+  /// param data: The data.
   pub fn push_constants_f32(&self, index: usize, command_buffers: &HalaCommandBufferSet, offset: u32, data: &[f32]) {
     let mut shader_stage = HalaShaderStageFlags::FRAGMENT;
     if self.vertex_shader.is_some() {
@@ -431,7 +391,7 @@ impl HalaGraphicsProgram {
     if self.mesh_shader.is_some() {
       shader_stage |= HalaShaderStageFlags::MESH;
     }
-    command_buffers.push_constants_f32(index, &self.pipeline, shader_stage, offset, data);
+    command_buffers.push_constants_f32(index, self.pipeline.layout, shader_stage, offset, data);
   }
 
   /// Draw.

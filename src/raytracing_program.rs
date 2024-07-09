@@ -35,6 +35,7 @@ pub struct HalaRayTracingProgramDesc {
   pub miss_shader_file_paths: Vec<String>,
   pub hit_shader_file_paths: Vec<HalaRayTracingHitShaderDesc>,
   pub callable_shader_file_paths: Vec<String>,
+  pub push_constant_size: u32,
   pub ray_recursion_depth: u32,
 }
 
@@ -147,6 +148,19 @@ impl HalaRayTracingProgram {
     }
 
     let (pipeline, sbt) = {
+      let mut shader_stage = HalaShaderStageFlags::default();
+      if !raygen_shaders.is_empty() {
+        shader_stage |= HalaShaderStageFlags::RAYGEN;
+      }
+      if !miss_shaders.is_empty() {
+        shader_stage |= HalaShaderStageFlags::MISS;
+      }
+      if !hit_shaders.is_empty() {
+        shader_stage |= HalaShaderStageFlags::CLOSEST_HIT | HalaShaderStageFlags::ANY_HIT | HalaShaderStageFlags::INTERSECTION;
+      }
+      if !callable_shaders.is_empty() {
+        shader_stage |= HalaShaderStageFlags::CALLABLE;
+      }
       let raygen_shaders = raygen_shaders.iter().map(|shader| { shader.borrow() }).collect::<Vec<_>>();
       let miss_shaders = miss_shaders.iter().map(|shader| { shader.borrow() }).collect::<Vec<_>>();
       let hit_shaders = hit_shaders.iter().map(|(closest_hit_shader, any_hit_shader, intersection_shader)| {
@@ -167,9 +181,21 @@ impl HalaRayTracingProgram {
         )
       }).collect::<Vec<_>>();
       let c = callable_shaders.iter().map(|shader| shader.as_ref()).collect::<Vec<_>>();
+      let push_constant_ranges = if desc.push_constant_size > 0 {
+        &[
+          hala_gfx::HalaPushConstantRange {
+            stage_flags: shader_stage,
+            offset: 0,
+            size: desc.push_constant_size,
+          },
+        ]
+      } else {
+        &[] as &[hala_gfx::HalaPushConstantRange]
+      };
       let pipeline = HalaRayTracingPipeline::new(
         logical_device.clone(),
         descriptor_set_layouts,
+        push_constant_ranges,
         r.as_slice(),
         m.as_slice(),
         h.as_slice(),
@@ -228,6 +254,50 @@ impl HalaRayTracingProgram {
         &[],
       );
     }
+  }
+
+  /// Push constants.
+  /// param index: The index of the command buffer.
+  /// param command_buffers: The command buffers.
+  /// param offset: The offset.
+  /// param data: The data.
+  pub fn push_constants(&self, index: usize, command_buffers: &HalaCommandBufferSet, offset: u32, data: &[u8]) {
+    let mut shader_stage = HalaShaderStageFlags::default();
+    if !self.raygen_shaders.is_empty() {
+      shader_stage |= HalaShaderStageFlags::RAYGEN;
+    }
+    if !self.miss_shaders.is_empty() {
+      shader_stage |= HalaShaderStageFlags::MISS;
+    }
+    if !self.hit_shaders.is_empty() {
+      shader_stage |= HalaShaderStageFlags::CLOSEST_HIT | HalaShaderStageFlags::ANY_HIT | HalaShaderStageFlags::INTERSECTION;
+    }
+    if !self.callable_shaders.is_empty() {
+      shader_stage |= HalaShaderStageFlags::CALLABLE;
+    }
+    command_buffers.push_constants(index, self.pipeline.layout, shader_stage, offset, data);
+  }
+
+  /// Push constants f32.
+  /// param index: The index of the command buffer.
+  /// param command_buffers: The command buffers.
+  /// param offset: The offset.
+  /// param data: The data.
+  pub fn push_constants_f32(&self, index: usize, command_buffers: &HalaCommandBufferSet, offset: u32, data: &[f32]) {
+    let mut shader_stage = HalaShaderStageFlags::default();
+    if !self.raygen_shaders.is_empty() {
+      shader_stage |= HalaShaderStageFlags::RAYGEN;
+    }
+    if !self.miss_shaders.is_empty() {
+      shader_stage |= HalaShaderStageFlags::MISS;
+    }
+    if !self.hit_shaders.is_empty() {
+      shader_stage |= HalaShaderStageFlags::CLOSEST_HIT | HalaShaderStageFlags::ANY_HIT | HalaShaderStageFlags::INTERSECTION;
+    }
+    if !self.callable_shaders.is_empty() {
+      shader_stage |= HalaShaderStageFlags::CALLABLE;
+    }
+    command_buffers.push_constants_f32(index, self.pipeline.layout, shader_stage, offset, data);
   }
 
   /// Trace rays.
