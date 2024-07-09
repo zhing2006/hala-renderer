@@ -469,7 +469,6 @@ impl HalaRendererTrait for HalaRenderer {
     let context = self.resources.context.borrow();
 
     // Update the renderer.
-    self.data.image_index = context.prepare_frame()?;
     context.record_graphics_command_buffer(
       self.data.image_index,
       &self.resources.graphics_command_buffers,

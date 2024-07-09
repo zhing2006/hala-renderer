@@ -279,7 +279,11 @@ pub trait HalaRendererTrait {
   fn pre_update(&mut self, width: u32, height: u32) -> Result<(), HalaRendererError> {
     self.check_and_restore_device(width, height)?;
 
-    // Statistic.
+    // Get a new image index.
+    let image_index = self.resources().context.borrow().prepare_frame()?;
+    self.data_mut().image_index = image_index;
+
+    // This image is finished. So we can get statistic data safely.
     if self.statistics_mut().total_frames > self.resources().context.borrow().swapchain.num_of_images as u64 {
       let gpu_time = self.resources().context.borrow().get_gpu_frame_time(self.data().image_index)?;
       self.statistics_mut().set_gpu_time(&gpu_time);
