@@ -39,12 +39,16 @@ pub struct HalaRayTracingProgramDesc {
   pub ray_recursion_depth: u32,
 }
 
+type RcRefHalaShader = Rc<RefCell<HalaShader>>;
+type OptionRcRefHalaShader = Option<RcRefHalaShader>;
+type TupleOptionRcRefHalaShader = (OptionRcRefHalaShader, OptionRcRefHalaShader, OptionRcRefHalaShader);
+
 /// The raytracing program.
 pub struct HalaRayTracingProgram {
-  pub raygen_shaders: Vec<Rc<RefCell<HalaShader>>>,
-  pub miss_shaders: Vec<Rc<RefCell<HalaShader>>>,
-  pub hit_shaders: Vec<(Option<Rc<RefCell<HalaShader>>>, Option<Rc<RefCell<HalaShader>>>, Option<Rc<RefCell<HalaShader>>>)>,
-  pub callable_shaders: Vec<Rc<RefCell<HalaShader>>>,
+  pub raygen_shaders: Vec<RcRefHalaShader>,
+  pub miss_shaders: Vec<RcRefHalaShader>,
+  pub hit_shaders: Vec<TupleOptionRcRefHalaShader>,
+  pub callable_shaders: Vec<RcRefHalaShader>,
   pub pipeline: HalaRayTracingPipeline,
   pub sbt: HalaShaderBindingTable,
 }
@@ -165,9 +169,9 @@ impl HalaRayTracingProgram {
       let miss_shaders = miss_shaders.iter().map(|shader| { shader.borrow() }).collect::<Vec<_>>();
       let hit_shaders = hit_shaders.iter().map(|(closest_hit_shader, any_hit_shader, intersection_shader)| {
         (
-          closest_hit_shader.as_ref().map_or(None, |shader| Some(shader.borrow())),
-          any_hit_shader.as_ref().map_or(None, |shader| Some(shader.borrow())),
-          intersection_shader.as_ref().map_or(None, |shader| Some(shader.borrow())),
+          closest_hit_shader.as_ref().map(|shader| shader.borrow()),
+          any_hit_shader.as_ref().map(|shader| shader.borrow()),
+          intersection_shader.as_ref().map(|shader| shader.borrow()),
         )
       }).collect::<Vec<_>>();
       let callable_shaders = callable_shaders.iter().map(|shader| { shader.borrow() }).collect::<Vec<_>>();
@@ -175,9 +179,9 @@ impl HalaRayTracingProgram {
       let m = miss_shaders.iter().map(|shader| shader.as_ref()).collect::<Vec<_>>();
       let h = hit_shaders.iter().map(|(closest_hit_shader, any_hit_shader, intersection_shader)| {
         (
-          closest_hit_shader.as_ref().map_or(None, |shader| Some(shader.as_ref())),
-          any_hit_shader.as_ref().map_or(None, |shader| Some(shader.as_ref())),
-          intersection_shader.as_ref().map_or(None, |shader| Some(shader.as_ref())),
+          closest_hit_shader.as_ref().map(|shader| shader.as_ref()),
+          any_hit_shader.as_ref().map(|shader| shader.as_ref()),
+          intersection_shader.as_ref().map(|shader| shader.as_ref()),
         )
       }).collect::<Vec<_>>();
       let c = callable_shaders.iter().map(|shader| shader.as_ref()).collect::<Vec<_>>();

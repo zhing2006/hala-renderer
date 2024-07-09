@@ -164,7 +164,7 @@ impl HalaGraphicsProgram {
       } else {
         &[] as &[HalaPushConstantRange]
       };
-      let pipeline = HalaGraphicsPipeline::new(
+      HalaGraphicsPipeline::new(
         logical_device.clone(),
         swapchain,
         descriptor_set_layouts,
@@ -182,8 +182,7 @@ impl HalaGraphicsProgram {
         dynamic_states,
         pipeline_cache,
         &format!("{}.graphics_pipeline", debug_name),
-      )?;
-      pipeline
+      )?
     };
 
     Ok(Self {
@@ -298,7 +297,7 @@ impl HalaGraphicsProgram {
       } else {
         &[] as &[HalaPushConstantRange]
       };
-      let pipeline = HalaGraphicsPipeline::with_rt(
+      HalaGraphicsPipeline::with_rt(
         logical_device.clone(),
         color_images,
         depth_image,
@@ -317,8 +316,7 @@ impl HalaGraphicsProgram {
         dynamic_states,
         pipeline_cache,
         &format!("{}.graphics_pipeline", debug_name),
-      )?;
-      pipeline
+      )?
     };
 
     Ok(Self {

@@ -127,7 +127,7 @@ impl HalaShaderCache {
   /// param file_path: The shader file path.
   /// return: The shader or None.
   pub fn get(&self, file_path: &str) -> Option<Rc<RefCell<HalaShader>>> {
-    self.cache.get(file_path).map(|shader| Rc::clone(shader))
+    self.cache.get(file_path).map(Rc::clone)
   }
 
   /// Remove the specified shader.
