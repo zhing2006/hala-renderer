@@ -8,6 +8,7 @@ use hala_gfx::{
   HalaRayTracingPipeline,
   HalaDescriptorSetLayout,
   HalaDescriptorSet,
+  HalaDescriptorType,
   HalaLogicalDevice,
   HalaPipelineCache,
   HalaShader,
@@ -36,6 +37,7 @@ pub struct HalaRayTracingProgramDesc {
   pub hit_shader_file_paths: Vec<HalaRayTracingHitShaderDesc>,
   pub callable_shader_file_paths: Vec<String>,
   pub push_constant_size: u32,
+  pub bindings: Vec<HalaDescriptorType>,
   pub ray_recursion_depth: u32,
 }
 

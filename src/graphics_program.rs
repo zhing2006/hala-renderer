@@ -10,6 +10,7 @@ use hala_gfx::{
   HalaDepthState,
   HalaDescriptorSet,
   HalaDescriptorSetLayout,
+  HalaDescriptorType,
   HalaDynamicState,
   HalaGraphicsPipeline,
   HalaImage,
@@ -39,6 +40,7 @@ pub struct HalaGraphicsProgramDesc {
   pub mesh_shader_file_path: Option<String>,
   pub fragment_shader_file_path: String,
   pub push_constant_size: u32,
+  pub bindings: Vec<HalaDescriptorType>,
   pub primitive_topology: HalaPrimitiveTopology,
   pub color_blend: HalaBlendState,
   pub alpha_blend: HalaBlendState,
@@ -49,11 +51,8 @@ pub struct HalaGraphicsProgramDesc {
 
 /// The graphics program.
 pub struct HalaGraphicsProgram {
-  #[allow(dead_code)]
   vertex_shader: Option<Rc<RefCell<HalaShader>>>,
-  #[allow(dead_code)]
   task_shader: Option<Rc<RefCell<HalaShader>>>,
-  #[allow(dead_code)]
   mesh_shader: Option<Rc<RefCell<HalaShader>>>,
   #[allow(dead_code)]
   fragment_shader: Rc<RefCell<HalaShader>>,
