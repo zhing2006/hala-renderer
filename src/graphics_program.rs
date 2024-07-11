@@ -12,6 +12,7 @@ use hala_gfx::{
   HalaDescriptorSetLayout,
   HalaDescriptorType,
   HalaDynamicState,
+  HalaFormat,
   HalaGraphicsPipeline,
   HalaImage,
   HalaLogicalDevice,
@@ -32,6 +33,9 @@ use hala_gfx::{
 use crate::error::HalaRendererError;
 use crate::shader_cache::HalaShaderCache;
 
+type RcRefHalaShader = Rc<RefCell<HalaShader>>;
+type OptionRcRefHalaShader = Option<RcRefHalaShader>;
+
 /// The graphics program description.
 #[derive(Serialize, Deserialize)]
 pub struct HalaGraphicsProgramDesc {
@@ -51,11 +55,11 @@ pub struct HalaGraphicsProgramDesc {
 
 /// The graphics program.
 pub struct HalaGraphicsProgram {
-  vertex_shader: Option<Rc<RefCell<HalaShader>>>,
-  task_shader: Option<Rc<RefCell<HalaShader>>>,
-  mesh_shader: Option<Rc<RefCell<HalaShader>>>,
+  vertex_shader: OptionRcRefHalaShader,
+  task_shader: OptionRcRefHalaShader,
+  mesh_shader: OptionRcRefHalaShader,
   #[allow(dead_code)]
-  fragment_shader: Rc<RefCell<HalaShader>>,
+  fragment_shader: RcRefHalaShader,
   pipeline: HalaGraphicsPipeline,
 }
 
@@ -63,35 +67,19 @@ pub struct HalaGraphicsProgram {
 #[allow(clippy::too_many_arguments)]
 impl HalaGraphicsProgram {
 
-  /// Create a new graphics program.
+  /// Load the shaders.
   /// param logical_device: The logical device.
-  /// param swapchain: The swapchain.
-  /// param descriptor_set_layouts: The descriptor set layouts.
-  /// param flags: The pipeline create flags.
-  /// param vertex_attribute_descriptions: The vertex attribute descriptions.
-  /// param vertex_binding_descriptions: The vertex binding descriptions.
-  /// param dynamic_states: The dynamic states.
   /// param desc: The graphics program description.
-  /// param pipeline_cache: The pipeline cache.
   /// param debug_name: The debug name.
-  /// return: The result of the graphics program.
-  pub fn new<DSL, VIAD, VIBD>(
+  /// return: The result of the shaders.
+  fn load_shaders(
     logical_device: Rc<RefCell<HalaLogicalDevice>>,
-    swapchain: &HalaSwapchain,
-    descriptor_set_layouts: &[DSL],
-    flags: HalaPipelineCreateFlags,
-    vertex_attribute_descriptions: &[VIAD],
-    vertex_binding_descriptions: &[VIBD],
-    dynamic_states: &[HalaDynamicState],
     desc: &HalaGraphicsProgramDesc,
-    pipeline_cache: Option<&HalaPipelineCache>,
     debug_name: &str,
-  ) -> Result<Self, HalaRendererError>
-  where
-    DSL: AsRef<HalaDescriptorSetLayout>,
-    VIAD: AsRef<HalaVertexInputAttributeDescription>,
-    VIBD: AsRef<HalaVertexInputBindingDescription>,
-  {
+  ) -> Result<
+    (HalaShaderStageFlags, OptionRcRefHalaShader, OptionRcRefHalaShader, OptionRcRefHalaShader, RcRefHalaShader),
+    HalaRendererError,
+  > {
     let mut shader_stage = HalaShaderStageFlags::FRAGMENT;
     let vertex_shader = if let Some(ref vertex_shader_file_path) = desc.vertex_shader_file_path {
       shader_stage |= HalaShaderStageFlags::VERTEX;
@@ -140,57 +128,53 @@ impl HalaGraphicsProgram {
       &format!("{}.frag.spv", debug_name),
     )?;
 
-    let pipeline = {
-      let mut shaders = Vec::new();
-      if let Some(ref vertex_shader) = vertex_shader {
-        shaders.push(vertex_shader.borrow());
-      }
-      if let Some(ref task_shader) = task_shader {
-        shaders.push(task_shader.borrow());
-      }
-      if let Some(ref mesh_shader) = mesh_shader {
-        shaders.push(mesh_shader.borrow());
-      }
-      shaders.push(fragment_shader.borrow());
-      let push_constant_ranges = if desc.push_constant_size > 0 {
-        &[
-          HalaPushConstantRange {
-            stage_flags: shader_stage,
-            offset: 0,
-            size: desc.push_constant_size,
-          },
-        ]
-      } else {
-        &[] as &[HalaPushConstantRange]
-      };
-      HalaGraphicsPipeline::new(
-        logical_device.clone(),
-        swapchain,
-        descriptor_set_layouts,
-        flags,
-        vertex_attribute_descriptions,
-        vertex_binding_descriptions,
-        push_constant_ranges,
-        desc.primitive_topology,
-        &desc.color_blend,
-        &desc.alpha_blend,
-        &desc.rasterizer_info,
-        &desc.depth_info,
-        desc.stencil_info.as_ref(),
-        &shaders.iter().map(|s| s.as_ref()).collect::<Vec<_>>(),
-        dynamic_states,
-        pipeline_cache,
-        &format!("{}.graphics_pipeline", debug_name),
-      )?
-    };
+    Ok((shader_stage, vertex_shader, task_shader, mesh_shader, fragment_shader))
+  }
 
-    Ok(Self {
-      vertex_shader,
-      task_shader,
-      mesh_shader,
-      fragment_shader,
-      pipeline,
-    })
+  /// Create a new graphics program.
+  /// param logical_device: The logical device.
+  /// param swapchain: The swapchain.
+  /// param descriptor_set_layouts: The descriptor set layouts.
+  /// param flags: The pipeline create flags.
+  /// param vertex_attribute_descriptions: The vertex attribute descriptions.
+  /// param vertex_binding_descriptions: The vertex binding descriptions.
+  /// param dynamic_states: The dynamic states.
+  /// param desc: The graphics program description.
+  /// param pipeline_cache: The pipeline cache.
+  /// param debug_name: The debug name.
+  /// return: The result of the graphics program.
+  pub fn new<DSL, VIAD, VIBD>(
+    logical_device: Rc<RefCell<HalaLogicalDevice>>,
+    swapchain: &HalaSwapchain,
+    descriptor_set_layouts: &[DSL],
+    flags: HalaPipelineCreateFlags,
+    vertex_attribute_descriptions: &[VIAD],
+    vertex_binding_descriptions: &[VIBD],
+    dynamic_states: &[HalaDynamicState],
+    desc: &HalaGraphicsProgramDesc,
+    pipeline_cache: Option<&HalaPipelineCache>,
+    debug_name: &str,
+  ) -> Result<Self, HalaRendererError>
+    where
+      DSL: AsRef<HalaDescriptorSetLayout>,
+      VIAD: AsRef<HalaVertexInputAttributeDescription>,
+      VIBD: AsRef<HalaVertexInputBindingDescription>,
+  {
+    Self::with_formats_and_size(
+      logical_device,
+      &[swapchain.desc.format],
+      Some(swapchain.depth_stencil_format),
+      swapchain.desc.dims.width,
+      swapchain.desc.dims.height,
+      descriptor_set_layouts,
+      flags,
+      vertex_attribute_descriptions,
+      vertex_binding_descriptions,
+      dynamic_states,
+      desc,
+      pipeline_cache,
+      debug_name,
+    )
   }
 
   /// Create a new graphics program with custom render target.
@@ -219,58 +203,74 @@ impl HalaGraphicsProgram {
     pipeline_cache: Option<&HalaPipelineCache>,
     debug_name: &str,
   ) -> Result<Self, HalaRendererError>
-  where
-    T: AsRef<HalaImage>,
-    DSL: AsRef<HalaDescriptorSetLayout>,
-    VIAD: AsRef<HalaVertexInputAttributeDescription>,
-    VIBD: AsRef<HalaVertexInputBindingDescription>,
+    where
+      T: AsRef<HalaImage>,
+      DSL: AsRef<HalaDescriptorSetLayout>,
+      VIAD: AsRef<HalaVertexInputAttributeDescription>,
+      VIBD: AsRef<HalaVertexInputBindingDescription>,
   {
-    let mut shader_stage = HalaShaderStageFlags::FRAGMENT;
-    let vertex_shader = if let Some(ref vertex_shader_file_path) = desc.vertex_shader_file_path {
-      shader_stage |= HalaShaderStageFlags::VERTEX;
-      Some(HalaShaderCache::get_instance().borrow_mut().load(
-        logical_device.clone(),
-        vertex_shader_file_path,
-        HalaShaderStageFlags::VERTEX,
-        HalaRayTracingShaderGroupType::GENERAL,
-        &format!("{}.vert.spv", debug_name),
-      )?)
-    } else {
-      None
-    };
+    Self::with_formats_and_size(
+      logical_device,
+      color_images.iter().map(|i| i.as_ref().format).collect::<Vec<_>>().as_slice(),
+      depth_image.map(|i| i.as_ref().format),
+      color_images[0].as_ref().extent.width,
+      color_images[0].as_ref().extent.height,
+      descriptor_set_layouts,
+      flags,
+      vertex_attribute_descriptions,
+      vertex_binding_descriptions,
+      dynamic_states,
+      desc,
+      pipeline_cache,
+      debug_name,
+    )
+  }
 
-    let task_shader = if let Some(ref task_shader_file_path) = desc.task_shader_file_path {
-      shader_stage |= HalaShaderStageFlags::TASK;
-      Some(HalaShaderCache::get_instance().borrow_mut().load(
-        logical_device.clone(),
-        task_shader_file_path,
-        HalaShaderStageFlags::TASK,
-        HalaRayTracingShaderGroupType::GENERAL,
-        &format!("{}.task.spv", debug_name),
-      )?)
-    } else {
-      None
-    };
-
-    let mesh_shader = if let Some(ref mesh_shader_file_path) = desc.mesh_shader_file_path {
-      shader_stage |= HalaShaderStageFlags::MESH;
-      Some(HalaShaderCache::get_instance().borrow_mut().load(
-        logical_device.clone(),
-        mesh_shader_file_path,
-        HalaShaderStageFlags::MESH,
-        HalaRayTracingShaderGroupType::GENERAL,
-        &format!("{}.mesh.spv", debug_name),
-      )?)
-    } else {
-      None
-    };
-
-    let fragment_shader = HalaShaderCache::get_instance().borrow_mut().load(
+  /// Create a new graphics program with custom formats and size.
+  /// param logical_device: The logical device.
+  /// param color_formats: The color formats.
+  /// param depth_format: The depth format.
+  /// param width: The width.
+  /// param height: The height.
+  /// param descriptor_set_layouts: The descriptor set layouts.
+  /// param flags: The pipeline create flags.
+  /// param vertex_attribute_descriptions: The vertex attribute descriptions.
+  /// param vertex_binding_descriptions: The vertex binding descriptions.
+  /// param dynamic_states: The dynamic states.
+  /// param desc: The graphics program description.
+  /// param pipeline_cache: The pipeline cache.
+  /// param debug_name: The debug name.
+  /// return: The result of the graphics program.
+  pub fn with_formats_and_size<DSL, VIAD, VIBD>(
+    logical_device: Rc<RefCell<HalaLogicalDevice>>,
+    color_formats: &[HalaFormat],
+    depth_format: Option<HalaFormat>,
+    width: u32,
+    height: u32,
+    descriptor_set_layouts: &[DSL],
+    flags: HalaPipelineCreateFlags,
+    vertex_attribute_descriptions: &[VIAD],
+    vertex_binding_descriptions: &[VIBD],
+    dynamic_states: &[HalaDynamicState],
+    desc: &HalaGraphicsProgramDesc,
+    pipeline_cache: Option<&HalaPipelineCache>,
+    debug_name: &str,
+  ) -> Result<Self, HalaRendererError>
+    where
+      DSL: AsRef<HalaDescriptorSetLayout>,
+      VIAD: AsRef<HalaVertexInputAttributeDescription>,
+      VIBD: AsRef<HalaVertexInputBindingDescription>,
+  {
+    let (
+      shader_stage,
+      vertex_shader,
+      task_shader,
+      mesh_shader,
+      fragment_shader,
+    ) = Self::load_shaders(
       logical_device.clone(),
-      &desc.fragment_shader_file_path,
-      HalaShaderStageFlags::FRAGMENT,
-      HalaRayTracingShaderGroupType::GENERAL,
-      &format!("{}.frag.spv", debug_name),
+      desc,
+      debug_name,
     )?;
 
     let pipeline = {
@@ -296,10 +296,12 @@ impl HalaGraphicsProgram {
       } else {
         &[] as &[HalaPushConstantRange]
       };
-      HalaGraphicsPipeline::with_rt(
+      HalaGraphicsPipeline::with_format_and_size(
         logical_device.clone(),
-        color_images,
-        depth_image,
+        color_formats,
+        depth_format,
+        width,
+        height,
         descriptor_set_layouts,
         flags,
         vertex_attribute_descriptions,
