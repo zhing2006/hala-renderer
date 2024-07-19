@@ -835,7 +835,7 @@ impl HalaRenderer {
     let final_image = hala_gfx::HalaImage::new_2d(
       Rc::clone(&context.logical_device),
       hala_gfx::HalaImageUsageFlags::STORAGE | hala_gfx::HalaImageUsageFlags::TRANSFER_SRC,
-      context.swapchain.desc.format.into(),
+      context.swapchain.desc.format,
       context.gpu_req.width,
       context.gpu_req.height,
       1,
