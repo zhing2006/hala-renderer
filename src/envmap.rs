@@ -2,7 +2,7 @@ use std::rc::Rc;
 use std::path::Path;
 
 use image::GenericImageView;
-use image::io::Reader as ImageReader;
+use image::ImageReader;
 
 use rayon::prelude::*;
 
