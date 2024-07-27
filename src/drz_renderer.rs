@@ -1,6 +1,9 @@
 use std::rc::Rc;
 
-use hala_gfx::{HalaGPURequirements, HalaShader};
+use hala_gfx::{
+  HalaGPURequirements,
+  HalaShader,
+};
 
 use crate::error::HalaRendererError;
 use crate::scene::{
@@ -54,6 +57,11 @@ pub struct HalaRenderer {
 
   pub(crate) resources: std::mem::ManuallyDrop<HalaRendererResources>,
 
+  pub(crate) use_deferred: bool,
+  pub(crate) depth_image: Option<hala_gfx::HalaImage>,
+  pub(crate) albedo_image: Option<hala_gfx::HalaImage>,
+  pub(crate) normal_image: Option<hala_gfx::HalaImage>,
+
   pub(crate) static_descriptor_set: std::mem::ManuallyDrop<hala_gfx::HalaDescriptorSet>,
   pub(crate) global_uniform_buffer: std::mem::ManuallyDrop<hala_gfx::HalaBuffer>,
   pub(crate) dynamic_descriptor_set: Option<hala_gfx::HalaDescriptorSet>,
@@ -68,7 +76,9 @@ pub struct HalaRenderer {
 
   pub(crate) scene_in_gpu: Option<gpu::HalaScene>,
 
-  pub(crate) pso: Vec<hala_gfx::HalaGraphicsPipeline>,
+  pub(crate) forward_graphics_pipelines: Vec<hala_gfx::HalaGraphicsPipeline>,
+  pub(crate) deferred_graphics_pipelines: Vec<hala_gfx::HalaGraphicsPipeline>,
+  pub(crate) compute_pipelines: Vec<hala_gfx::HalaComputePipeline>,
   pub(crate) textures_descriptor_set: Option<hala_gfx::HalaDescriptorSet>,
 
   pub(crate) data: HalaRendererData,
@@ -81,13 +91,20 @@ impl Drop for HalaRenderer {
 
   fn drop(&mut self) {
     self.textures_descriptor_set = None;
-    self.pso.clear();
+    self.forward_graphics_pipelines.clear();
+    self.deferred_graphics_pipelines.clear();
+    self.compute_pipelines.clear();
 
     self.scene_in_gpu = None;
 
     self.traditional_shaders.clear();
     self.shaders.clear();
     self.compute_shaders.clear();
+
+    self.use_deferred = false;
+    self.depth_image = None;
+    self.albedo_image = None;
+    self.normal_image = None;
 
     self.object_uniform_buffers.clear();
     self.dynamic_descriptor_set = None;
@@ -96,6 +113,7 @@ impl Drop for HalaRenderer {
       std::mem::ManuallyDrop::drop(&mut self.static_descriptor_set);
       std::mem::ManuallyDrop::drop(&mut self.resources);
     }
+
     log::debug!("A HalaRenderer \"{}\" is dropped.", self.info().name);
   }
 
@@ -412,7 +430,7 @@ impl HalaRendererTrait for HalaRenderer {
       )?
     };
 
-    let mut used_shader_list: Vec<Vec<&HalaShader>> = Vec::new();
+    let mut pso_shader_list: Vec<Vec<&HalaShader>> = Vec::new();
     if self.use_mesh_shader {
       // Collect modern graphics shaders.
       for (task_shader, mesh_shader, fragment_shader) in self.shaders.iter() {
@@ -422,68 +440,74 @@ impl HalaRendererTrait for HalaRenderer {
         }
         shaders.push(mesh_shader.as_ref());
         shaders.push(fragment_shader.as_ref());
-        used_shader_list.push(shaders);
+        pso_shader_list.push(shaders);
       }
     } else {
       // Collect traditional graphics shaders.
       for shaders in self.traditional_shaders.iter() {
-        used_shader_list.push(vec![shaders.0.as_ref(), shaders.1.as_ref()])
+        pso_shader_list.push(vec![shaders.0.as_ref(), shaders.1.as_ref()])
       }
     }
 
     // Create graphics pipelines.
-    for (i, shaders) in used_shader_list.iter().enumerate() {
-      self.pso.push(
+    for (i, shaders) in pso_shader_list.iter().enumerate() {
+      let descriptor_set_layouts = [&self.static_descriptor_set.layout, &dynamic_descriptor_set.layout, &textures_descriptor_set.layout];
+      let flags = hala_gfx::HalaPipelineCreateFlags::default();
+      let vertex_attribute_descriptions = [
+        hala_gfx::HalaVertexInputAttributeDescription {
+          binding: 0,
+          location: 0,
+          offset: 0,
+          format: hala_gfx::HalaFormat::R32G32B32_SFLOAT, // Position.
+        },
+        hala_gfx::HalaVertexInputAttributeDescription {
+          binding: 0,
+          location: 1,
+          offset: 12,
+          format: hala_gfx::HalaFormat::R32G32B32_SFLOAT, // Normal.
+        },
+        hala_gfx::HalaVertexInputAttributeDescription {
+          binding: 0,
+          location: 2,
+          offset: 24,
+          format: hala_gfx::HalaFormat::R32G32B32_SFLOAT, // Tangent.
+        },
+        hala_gfx::HalaVertexInputAttributeDescription {
+          binding: 0,
+          location: 3,
+          offset: 36,
+          format: hala_gfx::HalaFormat::R32G32_SFLOAT,  // UV.
+        },
+      ];
+      let vertex_binding_descriptions = [
+        hala_gfx::HalaVertexInputBindingDescription {
+          binding: 0,
+          stride: 44,
+          input_rate: hala_gfx::HalaVertexInputRate::VERTEX,
+        }
+      ];
+      let push_constant_ranges = [
+        hala_gfx::HalaPushConstantRange {
+          stage_flags: hala_gfx::HalaShaderStageFlags::FRAGMENT
+            | (if self.use_mesh_shader { hala_gfx::HalaShaderStageFlags::TASK | hala_gfx::HalaShaderStageFlags::MESH } else { hala_gfx::HalaShaderStageFlags::VERTEX }),
+          offset: 0,
+          size: if !self.use_mesh_shader {
+            12  // Mesh index, Material index and Primitive index.
+          } else {
+            20  // Mesh index, Material index, Primitive index, Meshlet count and Dispatch size X.
+          }
+        },
+      ];
+
+      self.forward_graphics_pipelines.push(
         hala_gfx::HalaGraphicsPipeline::new(
           Rc::clone(&context.logical_device),
           &context.swapchain,
-          &[&self.static_descriptor_set.layout, &dynamic_descriptor_set.layout, &textures_descriptor_set.layout],
-          hala_gfx::HalaPipelineCreateFlags::default(),
-          &[
-            hala_gfx::HalaVertexInputAttributeDescription {
-              binding: 0,
-              location: 0,
-              offset: 0,
-              format: hala_gfx::HalaFormat::R32G32B32_SFLOAT, // Position.
-            },
-            hala_gfx::HalaVertexInputAttributeDescription {
-              binding: 0,
-              location: 1,
-              offset: 12,
-              format: hala_gfx::HalaFormat::R32G32B32_SFLOAT, // Normal.
-            },
-            hala_gfx::HalaVertexInputAttributeDescription {
-              binding: 0,
-              location: 2,
-              offset: 24,
-              format: hala_gfx::HalaFormat::R32G32B32_SFLOAT, // Tangent.
-            },
-            hala_gfx::HalaVertexInputAttributeDescription {
-              binding: 0,
-              location: 3,
-              offset: 36,
-              format: hala_gfx::HalaFormat::R32G32_SFLOAT,  // UV.
-            },
-          ],
-          &[
-            hala_gfx::HalaVertexInputBindingDescription {
-              binding: 0,
-              stride: 44,
-              input_rate: hala_gfx::HalaVertexInputRate::VERTEX,
-            }
-          ],
-          &[
-            hala_gfx::HalaPushConstantRange {
-              stage_flags: hala_gfx::HalaShaderStageFlags::FRAGMENT
-                | (if self.use_mesh_shader { hala_gfx::HalaShaderStageFlags::TASK | hala_gfx::HalaShaderStageFlags::MESH } else { hala_gfx::HalaShaderStageFlags::VERTEX }),
-              offset: 0,
-              size: if !self.use_mesh_shader {
-                12  // Mesh index, Material index and Primitive index.
-              } else {
-                20  // Mesh index, Material index, Primitive index, Meshlet count and Dispatch size X.
-              }
-            },
-          ],
+          &descriptor_set_layouts,
+          flags,
+          &vertex_attribute_descriptions,
+          &vertex_binding_descriptions,
+          &push_constant_ranges,
           hala_gfx::HalaPrimitiveTopology::TRIANGLE_LIST,
           &hala_gfx::HalaBlendState::new(hala_gfx::HalaBlendFactor::SRC_ALPHA, hala_gfx::HalaBlendFactor::ONE_MINUS_SRC_ALPHA, hala_gfx::HalaBlendOp::ADD),
           &hala_gfx::HalaBlendState::new(hala_gfx::HalaBlendFactor::ONE, hala_gfx::HalaBlendFactor::ZERO, hala_gfx::HalaBlendOp::ADD),
@@ -494,12 +518,57 @@ impl HalaRendererTrait for HalaRenderer {
           &[hala_gfx::HalaDynamicState::VIEWPORT],
           Some(&pipeline_cache),
           &if self.use_mesh_shader {
-            format!("modern_{}.graphics_pipeline", i)
+            format!("modern_forward_{}.graphics_pipeline", i)
           } else {
-            format!("traditional_{}.graphics_pipeline", i)
+            format!("traditional_forward_{}.graphics_pipeline", i)
           },
         )?
       );
+      if self.use_deferred {
+        let depth_image = self.depth_image.as_ref().ok_or(
+          HalaRendererError::new("The deferred flag is setted, but the G-Buffer depth image is none!", None)
+        )?;
+        let albedo_image = self.albedo_image.as_ref().ok_or(
+          HalaRendererError::new("The deferred flag is setted, but the G-Buffer albedo image is none!", None)
+        )?;
+        let normal_image = self.normal_image.as_ref().ok_or(
+          HalaRendererError::new("The deferred flag is setted, but the G-Buffer normal image is none!", None)
+        )?;
+        self.deferred_graphics_pipelines.push(
+          hala_gfx::HalaGraphicsPipeline::with_format_and_size(
+            Rc::clone(&context.logical_device),
+            &[albedo_image.format, normal_image.format],
+            Some(depth_image.format),
+            self.info.width,
+            self.info.height,
+            &descriptor_set_layouts,
+            flags,
+            &vertex_attribute_descriptions,
+            &vertex_binding_descriptions,
+            &push_constant_ranges,
+            hala_gfx::HalaPrimitiveTopology::TRIANGLE_LIST,
+            &[
+              &hala_gfx::HalaBlendState::new(hala_gfx::HalaBlendFactor::ONE, hala_gfx::HalaBlendFactor::ZERO, hala_gfx::HalaBlendOp::ADD),
+              &hala_gfx::HalaBlendState::new(hala_gfx::HalaBlendFactor::ONE, hala_gfx::HalaBlendFactor::ZERO, hala_gfx::HalaBlendOp::ADD),
+            ],
+            &[
+              &hala_gfx::HalaBlendState::new(hala_gfx::HalaBlendFactor::ONE, hala_gfx::HalaBlendFactor::ZERO, hala_gfx::HalaBlendOp::ADD),
+              &hala_gfx::HalaBlendState::new(hala_gfx::HalaBlendFactor::ONE, hala_gfx::HalaBlendFactor::ZERO, hala_gfx::HalaBlendOp::ADD),
+            ],
+            &hala_gfx::HalaRasterizerState::new(hala_gfx::HalaFrontFace::COUNTER_CLOCKWISE, hala_gfx::HalaCullModeFlags::BACK, hala_gfx::HalaPolygonMode::FILL, 1.0),
+            &hala_gfx::HalaDepthState::new(true, true, hala_gfx::HalaCompareOp::GREATER), // We use reverse Z, so greater is less.
+            None,
+            shaders.as_slice(),
+            &[hala_gfx::HalaDynamicState::VIEWPORT],
+            Some(&pipeline_cache),
+            &if self.use_mesh_shader {
+              format!("modern_deferred_{}.graphics_pipeline", i)
+            } else {
+              format!("traditional_deferred_{}.graphics_pipeline", i)
+            },
+          )?
+        );
+      }
     }
 
     // Save pipeline cache.
@@ -557,12 +626,12 @@ impl HalaRendererTrait for HalaRenderer {
             }
 
             // Use specific material type pipeline state object.
-            command_buffers.bind_graphics_pipeline(index, &self.pso[material_type]);
+            command_buffers.bind_graphics_pipeline(index, &self.forward_graphics_pipelines[material_type]);
 
             // Bind descriptor sets.
             command_buffers.bind_graphics_descriptor_sets(
               index,
-              &self.pso[material_type],
+              &self.forward_graphics_pipelines[material_type],
               0,
               &[
                 self.static_descriptor_set.as_ref(),
@@ -584,7 +653,7 @@ impl HalaRendererTrait for HalaRenderer {
             }
             command_buffers.push_constants(
               index,
-              self.pso[material_type].layout,
+              self.forward_graphics_pipelines[material_type].layout,
               if !self.use_mesh_shader { hala_gfx::HalaShaderStageFlags::VERTEX } else { hala_gfx::HalaShaderStageFlags::TASK | hala_gfx::HalaShaderStageFlags::MESH }
                 | hala_gfx::HalaShaderStageFlags::FRAGMENT,
               0,
@@ -720,6 +789,11 @@ impl HalaRenderer {
 
       resources: std::mem::ManuallyDrop::new(resources),
 
+      use_deferred: false,
+      depth_image: None,
+      albedo_image: None,
+      normal_image: None,
+
       static_descriptor_set: std::mem::ManuallyDrop::new(static_descriptor_set),
       dynamic_descriptor_set: None,
       global_uniform_buffer: std::mem::ManuallyDrop::new(global_uniform_buffer),
@@ -731,12 +805,79 @@ impl HalaRenderer {
 
       scene_in_gpu: None,
 
-      pso: Vec::new(),
+      forward_graphics_pipelines: Vec::new(),
+      deferred_graphics_pipelines: Vec::new(),
+      compute_pipelines: Vec::new(),
+
       textures_descriptor_set: None,
 
       data: HalaRendererData::new(),
       statistics: HalaRendererStatistics::new(),
     })
+  }
+
+  /// Create G-buffer images.
+  /// param use_transient: Use transient images or not.
+  /// param albedo_format: The format of the albedo image.
+  /// param normal_format: The format of the normal image.
+  /// return: The result.
+  pub fn create_gbuffer_images(
+    &mut self,
+    use_transient: bool,
+    albedo_format: hala_gfx::HalaFormat,
+    normal_format: hala_gfx::HalaFormat,
+  ) -> Result<(), HalaRendererError> {
+    let rt_usage_flags = if use_transient {
+      hala_gfx::HalaImageUsageFlags::INPUT_ATTACHMENT | hala_gfx::HalaImageUsageFlags::TRANSIENT_ATTACHMENT
+    } else {
+      hala_gfx::HalaImageUsageFlags::INPUT_ATTACHMENT
+    };
+
+    // Create depth image.
+    let depth_image = hala_gfx::HalaImage::new_2d(
+      Rc::clone(&self.resources.context.borrow().logical_device),
+      hala_gfx::HalaImageUsageFlags::DEPTH_STENCIL_ATTACHMENT | rt_usage_flags,
+      hala_gfx::HalaFormat::D32_SFLOAT,
+      self.info.width,
+      self.info.height,
+      1,
+      1,
+      hala_gfx::HalaMemoryLocation::GpuOnly,
+      "depth.image",
+    )?;
+
+    // Create albedo image.
+    let albedo_image = hala_gfx::HalaImage::new_2d(
+      Rc::clone(&self.resources.context.borrow().logical_device),
+      hala_gfx::HalaImageUsageFlags::COLOR_ATTACHMENT | rt_usage_flags,
+      albedo_format,
+      self.info.width,
+      self.info.height,
+      1,
+      1,
+      hala_gfx::HalaMemoryLocation::GpuOnly,
+      "albedo.image",
+    )?;
+
+    // Create normal image.
+    let normal_image = hala_gfx::HalaImage::new_2d(
+      Rc::clone(&self.resources.context.borrow().logical_device),
+      hala_gfx::HalaImageUsageFlags::COLOR_ATTACHMENT | rt_usage_flags,
+      normal_format,
+      self.info.width,
+      self.info.height,
+      1,
+      1,
+      hala_gfx::HalaMemoryLocation::GpuOnly,
+      "normal.image",
+    )?;
+
+    self.use_deferred = true;
+    self.depth_image = Some(depth_image);
+    self.albedo_image = Some(albedo_image);
+    self.normal_image = Some(normal_image);
+
+    Ok(())
   }
 
   /// Push traditional shaders to the renderer.

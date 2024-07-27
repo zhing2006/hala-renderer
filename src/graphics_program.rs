@@ -296,6 +296,8 @@ impl HalaGraphicsProgram {
       } else {
         &[] as &[HalaPushConstantRange]
       };
+      let color_blends = vec![&desc.color_blend; color_formats.len()];
+      let alpha_blends = vec![&desc.alpha_blend; color_formats.len()];
       HalaGraphicsPipeline::with_format_and_size(
         logical_device.clone(),
         color_formats,
@@ -308,8 +310,8 @@ impl HalaGraphicsProgram {
         vertex_binding_descriptions,
         push_constant_ranges,
         desc.primitive_topology,
-        &desc.color_blend,
-        &desc.alpha_blend,
+        color_blends.as_slice(),
+        alpha_blends.as_slice(),
         &desc.rasterizer_info,
         &desc.depth_info,
         desc.stencil_info.as_ref(),

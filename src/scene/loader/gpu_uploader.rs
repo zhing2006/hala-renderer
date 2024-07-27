@@ -296,6 +296,7 @@ impl HalaSceneGPUUploader {
     // Create the material buffers.
     let mut material_buffers = Vec::with_capacity(scene_in_cpu.materials.len());
     let mut material_types = Vec::with_capacity(scene_in_cpu.materials.len());
+    let mut material_deferred_flags = Vec::with_capacity(scene_in_cpu.materials.len());
 
     // Copy the material data to GPU by the staging buffer.
     for (material_index, material) in scene_in_cpu.materials.iter().enumerate() {
@@ -317,6 +318,7 @@ impl HalaSceneGPUUploader {
 
       material_buffers.push(material_buffer);
       material_types.push(gpu_material._type);
+      material_deferred_flags.push(material.opacity < 1.0);
     }
 
     // Create the samplers and images.
@@ -493,6 +495,7 @@ impl HalaSceneGPUUploader {
       light_aabbs: light_aabb_buffer,
       materials: material_buffers,
       material_types,
+      material_deferred_flags,
       textures,
       samplers,
       images,
