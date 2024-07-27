@@ -194,13 +194,6 @@ impl HalaRendererTrait for HalaRenderer {
       return Err(HalaRendererError::new("There is no camera in the scene!", None));
     }
 
-    // Update global uniform buffer(Only use No.1 camera).
-    self.global_uniform_buffer.update_memory(0, &[HalaGlobalUniform {
-      v_mtx: scene.camera_view_matrices[0],
-      p_mtx: scene.camera_proj_matrices[0],
-      vp_mtx: scene.camera_proj_matrices[0] * scene.camera_view_matrices[0],
-    }])?;
-
     // Collect vertex and index buffers.
     let mut vertex_buffers = Vec::new();
     let mut index_buffers = Vec::new();
@@ -290,18 +283,7 @@ impl HalaRendererTrait for HalaRenderer {
       "main_dynamic.descriptor_set",
     )?;
 
-    for (mesh_index, mesh) in scene.meshes.iter().enumerate() {
-      // Prepare object data.
-      let mv_mtx = scene.camera_view_matrices[0] * mesh.transform;
-      let object_uniform = HalaObjectUniform {
-        m_mtx: mesh.transform,
-        i_m_mtx: mesh.transform.inverse(),
-        mv_mtx,
-        t_mv_mtx: mv_mtx.transpose(),
-        it_mv_mtx: mv_mtx.inverse().transpose(),
-        mvp_mtx: scene.camera_proj_matrices[0] * mv_mtx,
-      };
-
+    for (mesh_index, _mesh) in scene.meshes.iter().enumerate() {
       // Create object uniform buffer.
       let mut buffers = Vec::with_capacity(context.swapchain.num_of_images);
       for index in 0..context.swapchain.num_of_images {
@@ -312,8 +294,6 @@ impl HalaRendererTrait for HalaRenderer {
           hala_gfx::HalaMemoryLocation::CpuToGpu,
           &format!("object_{}_{}.uniform_buffer", mesh_index, index),
         )?;
-
-        buffer.update_memory(0, &[object_uniform])?;
 
         buffers.push(buffer);
       }
@@ -590,122 +570,161 @@ impl HalaRendererTrait for HalaRenderer {
     where F: FnOnce(usize, &hala_gfx::HalaCommandBufferSet) -> Result<(), hala_gfx::HalaGfxError>
   {
     self.pre_update(width, height)?;
+
+    let scene = self.scene_in_gpu.as_ref().ok_or(HalaRendererError::new("The scene in GPU is none!", None))?;
     let context = self.resources.context.borrow();
 
-    // Update the renderer.
-    context.record_graphics_command_buffer(
-      self.data.image_index,
-      &self.resources.graphics_command_buffers,
-      Some([25.0 / 255.0, 118.0 / 255.0, 210.0 / 255.0, 1.0]),
-      Some(0.0),
-      Some(0),  // We use reverse Z, so clear depth to 0.0.
-      |index, command_buffers| {
-        command_buffers.set_viewport(
-          index,
-          0,
-          &[
-            (
-              0.,
-              self.info.height as f32,
-              self.info.width as f32,
-              -(self.info.height as f32), // For vulkan y is down.
-              0.,
-              1.
-            ),
-          ],
-        );
+    // Update global uniform buffer(Only use No.1 camera).
+    self.global_uniform_buffer.update_memory(0, &[HalaGlobalUniform {
+      v_mtx: scene.camera_view_matrices[0],
+      p_mtx: scene.camera_proj_matrices[0],
+      vp_mtx: scene.camera_proj_matrices[0] * scene.camera_view_matrices[0],
+    }])?;
 
-        // Render the scene.
-        let mut primitive_index = 0u32;
-        let scene = self.scene_in_gpu.as_ref().ok_or(hala_gfx::HalaGfxError::new("The scene in GPU is none!", None))?;
-        for (mesh_index, mesh) in scene.meshes.iter().enumerate() {
-          for primitive in mesh.primitives.iter() {
-            let material_type = scene.material_types[primitive.material_index as usize] as usize;
-            if material_type >= scene.materials.len() {
-              return Err(hala_gfx::HalaGfxError::new("The material type index is out of range!", None));
+    // Update object uniform buffers.
+    for (mesh_index, mesh) in scene.meshes.iter().enumerate() {
+      // Prepare object data.
+      let mv_mtx = scene.camera_view_matrices[0] * mesh.transform;
+      let object_uniform = HalaObjectUniform {
+        m_mtx: mesh.transform,
+        i_m_mtx: mesh.transform.inverse(),
+        mv_mtx,
+        t_mv_mtx: mv_mtx.transpose(),
+        it_mv_mtx: mv_mtx.inverse().transpose(),
+        mvp_mtx: scene.camera_proj_matrices[0] * mv_mtx,
+      };
+
+      for index in 0..context.swapchain.num_of_images {
+        let buffer = self.object_uniform_buffers[mesh_index][index].as_ref();
+        buffer.update_memory(0, &[object_uniform])?;
+      }
+    }
+
+    if self.use_deferred {
+      self.record_deferred_command_buffer(
+        self.data.image_index,
+        &self.resources.graphics_command_buffers,
+        ui_fn,
+      )?;
+    } else {
+      context.record_graphics_command_buffer(
+        self.data.image_index,
+        &self.resources.graphics_command_buffers,
+        Some([25.0 / 255.0, 118.0 / 255.0, 210.0 / 255.0, 1.0]),
+        Some(0.0),
+        Some(0),  // We use reverse Z, so clear depth to 0.0.
+        |index, command_buffers| {
+          command_buffers.set_viewport(
+            index,
+            0,
+            &[
+              (
+                0.,
+                self.info.height as f32,
+                self.info.width as f32,
+                -(self.info.height as f32), // For vulkan y is down.
+                0.,
+                1.
+              ),
+            ],
+          );
+
+          // Render the scene.
+          let mut primitive_index = 0u32;
+          let scene = self.scene_in_gpu.as_ref().ok_or(hala_gfx::HalaGfxError::new("The scene in GPU is none!", None))?;
+          for (mesh_index, mesh) in scene.meshes.iter().enumerate() {
+            for primitive in mesh.primitives.iter() {
+              let material_type = scene.material_types[primitive.material_index as usize] as usize;
+              if material_type >= scene.materials.len() {
+                return Err(hala_gfx::HalaGfxError::new("The material type index is out of range!", None));
+              }
+              let material_deferred = scene.material_deferred_flags[primitive.material_index as usize];
+
+              // Build push constants.
+              let dispatch_size_x = (primitive.meshlet_count + 32 - 1) / 32;  // 32 threads per task group.
+              let mut push_constants = Vec::new();
+              push_constants.extend_from_slice(&(mesh_index as u32).to_le_bytes());
+              push_constants.extend_from_slice(&primitive.material_index.to_le_bytes());
+              push_constants.extend_from_slice(&primitive_index.to_le_bytes());
+              if self.use_mesh_shader {
+                push_constants.extend_from_slice(&primitive.meshlet_count.to_le_bytes());
+                push_constants.extend_from_slice(&dispatch_size_x.to_le_bytes());
+              }
+
+              if !material_deferred {
+                // Use specific material type pipeline state object.
+                command_buffers.bind_graphics_pipeline(index, &self.forward_graphics_pipelines[material_type]);
+
+                // Bind descriptor sets.
+                command_buffers.bind_graphics_descriptor_sets(
+                  index,
+                  &self.forward_graphics_pipelines[material_type],
+                  0,
+                  &[
+                    self.static_descriptor_set.as_ref(),
+                    self.dynamic_descriptor_set.as_ref().ok_or(hala_gfx::HalaGfxError::new("The dynamic descriptor set is none!", None))?,
+                    self.textures_descriptor_set.as_ref().ok_or(hala_gfx::HalaGfxError::new("The textures descriptor set is none!", None))?],
+                  &[],
+                );
+
+                // Push constants.
+                command_buffers.push_constants(
+                  index,
+                  self.forward_graphics_pipelines[material_type].layout,
+                  if !self.use_mesh_shader { hala_gfx::HalaShaderStageFlags::VERTEX } else { hala_gfx::HalaShaderStageFlags::TASK | hala_gfx::HalaShaderStageFlags::MESH }
+                    | hala_gfx::HalaShaderStageFlags::FRAGMENT,
+                  0,
+                  push_constants.as_slice(),
+                );
+
+                // Draw.
+                if !self.use_mesh_shader {
+                  // Bind vertex buffers.
+                  command_buffers.bind_vertex_buffers(
+                    index,
+                    0,
+                    &[primitive.vertex_buffer.as_ref()],
+                    &[0]);
+
+                  // Bind index buffer.
+                  command_buffers.bind_index_buffers(
+                    index,
+                    &[primitive.index_buffer.as_ref()],
+                    &[0],
+                    hala_gfx::HalaIndexType::UINT32);
+
+                  command_buffers.draw_indexed(
+                    index,
+                    primitive.index_count,
+                    1,
+                    0,
+                    0,
+                    0
+                  );
+                } else {
+                  command_buffers.draw_mesh_tasks(
+                    index,
+                    dispatch_size_x,
+                    1,
+                    1,
+                  );
+                }
+              }
+
+              primitive_index += 1;
             }
-
-            // Use specific material type pipeline state object.
-            command_buffers.bind_graphics_pipeline(index, &self.forward_graphics_pipelines[material_type]);
-
-            // Bind descriptor sets.
-            command_buffers.bind_graphics_descriptor_sets(
-              index,
-              &self.forward_graphics_pipelines[material_type],
-              0,
-              &[
-                self.static_descriptor_set.as_ref(),
-                self.dynamic_descriptor_set.as_ref().ok_or(hala_gfx::HalaGfxError::new("The dynamic descriptor set is none!", None))?,
-                self.textures_descriptor_set.as_ref().ok_or(hala_gfx::HalaGfxError::new("The textures descriptor set is none!", None))?],
-              &[],
-            );
-
-            let dispatch_size_x = (primitive.meshlet_count + 32 - 1) / 32;  // 32 threads per task group.
-
-            // Push constants.
-            let mut push_constants = Vec::new();
-            push_constants.extend_from_slice(&(mesh_index as u32).to_le_bytes());
-            push_constants.extend_from_slice(&primitive.material_index.to_le_bytes());
-            push_constants.extend_from_slice(&primitive_index.to_le_bytes());
-            if self.use_mesh_shader {
-              push_constants.extend_from_slice(&primitive.meshlet_count.to_le_bytes());
-              push_constants.extend_from_slice(&dispatch_size_x.to_le_bytes());
-            }
-            command_buffers.push_constants(
-              index,
-              self.forward_graphics_pipelines[material_type].layout,
-              if !self.use_mesh_shader { hala_gfx::HalaShaderStageFlags::VERTEX } else { hala_gfx::HalaShaderStageFlags::TASK | hala_gfx::HalaShaderStageFlags::MESH }
-                | hala_gfx::HalaShaderStageFlags::FRAGMENT,
-              0,
-              push_constants.as_slice(),
-            );
-
-            // Draw.
-            if !self.use_mesh_shader {
-              // Bind vertex buffers.
-              command_buffers.bind_vertex_buffers(
-                index,
-                0,
-                &[primitive.vertex_buffer.as_ref()],
-                &[0]);
-
-              // Bind index buffer.
-              command_buffers.bind_index_buffers(
-                index,
-                &[primitive.index_buffer.as_ref()],
-                &[0],
-                hala_gfx::HalaIndexType::UINT32);
-
-              command_buffers.draw_indexed(
-                index,
-                primitive.index_count,
-                1,
-                0,
-                0,
-                0
-              );
-            } else {
-              command_buffers.draw_mesh_tasks(
-                index,
-                dispatch_size_x,
-                1,
-                1,
-              );
-            }
-
-            primitive_index += 1;
           }
-        }
 
-        ui_fn(index, command_buffers)?;
+          ui_fn(index, command_buffers)?;
 
-        Ok(())
-      },
-      None,
-      |_, _| {
-        Ok(false)
-      },
-    )?;
+          Ok(())
+        },
+        None,
+        |_, _| {
+          Ok(false)
+        },
+      )?;
+    }
 
     Ok(())
   }
@@ -814,6 +833,210 @@ impl HalaRenderer {
       data: HalaRendererData::new(),
       statistics: HalaRendererStatistics::new(),
     })
+  }
+
+  /// Record the deferred rendering command buffer.
+  /// param index: The index of the current image.
+  /// param command_buffers: The command buffers.
+  /// param ui_fn: The draw UI function.
+  /// return: The result.
+  fn record_deferred_command_buffer<F>(&self, index: usize, command_buffers: &hala_gfx::HalaCommandBufferSet, ui_fn: F) -> Result<(), HalaRendererError>
+    where F: FnOnce(usize, &hala_gfx::HalaCommandBufferSet) -> Result<(), hala_gfx::HalaGfxError>
+  {
+    let context = self.resources.context.borrow();
+
+    // Prepare the command buffer and timestamp.
+    command_buffers.reset(index, false)?;
+    command_buffers.begin(index, hala_gfx::HalaCommandBufferUsageFlags::empty())?;
+    command_buffers.reset_query_pool(index, &context.timestamp_query_pool, (index * 2) as u32, 2);
+    command_buffers.write_timestamp(index, hala_gfx::HalaPipelineStageFlags2::NONE, &context.timestamp_query_pool, (index * 2) as u32);
+
+    if cfg!(debug_assertions) {
+      command_buffers.begin_debug_label(index, "Draw", [1.0, 1.0, 1.0, 1.0]);
+      command_buffers.begin_debug_label(index, "Draw G-Buffer", [1.0, 0.0, 0.0, 1.0]);
+    }
+
+    let depth_image = self.depth_image.as_ref().ok_or(HalaRendererError::new("The depth image is none!", None))?;
+    let albedo_image = self.albedo_image.as_ref().ok_or(HalaRendererError::new("The albedo image is none!", None))?;
+    let normal_image = self.normal_image.as_ref().ok_or(HalaRendererError::new("The normal image is none!", None))?;
+
+    // Setup deferred G-buffer write barriers.
+    command_buffers.set_image_barriers(
+      index,
+      &[
+        hala_gfx::HalaImageBarrierInfo {
+          old_layout: hala_gfx::HalaImageLayout::UNDEFINED,
+          new_layout: hala_gfx::HalaImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+          src_access_mask: hala_gfx::HalaAccessFlags2::NONE,
+          dst_access_mask: hala_gfx::HalaAccessFlags2::COLOR_ATTACHMENT_WRITE,
+          src_stage_mask: hala_gfx::HalaPipelineStageFlags2::TOP_OF_PIPE,
+          dst_stage_mask: hala_gfx::HalaPipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT,
+          aspect_mask: hala_gfx::HalaImageAspectFlags::COLOR,
+          image: albedo_image.raw,
+          ..Default::default()
+        },
+        hala_gfx::HalaImageBarrierInfo {
+          old_layout: hala_gfx::HalaImageLayout::UNDEFINED,
+          new_layout: hala_gfx::HalaImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+          src_access_mask: hala_gfx::HalaAccessFlags2::NONE,
+          dst_access_mask: hala_gfx::HalaAccessFlags2::COLOR_ATTACHMENT_WRITE,
+          src_stage_mask: hala_gfx::HalaPipelineStageFlags2::TOP_OF_PIPE,
+          dst_stage_mask: hala_gfx::HalaPipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT,
+          aspect_mask: hala_gfx::HalaImageAspectFlags::COLOR,
+          image: normal_image.raw,
+          ..Default::default()
+        },
+        hala_gfx::HalaImageBarrierInfo {
+          old_layout: hala_gfx::HalaImageLayout::UNDEFINED,
+          new_layout: hala_gfx::HalaImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+          src_access_mask: hala_gfx::HalaAccessFlags2::NONE,
+          dst_access_mask: hala_gfx::HalaAccessFlags2::DEPTH_STENCIL_ATTACHMENT_WRITE,
+          src_stage_mask: hala_gfx::HalaPipelineStageFlags2::TOP_OF_PIPE,
+          dst_stage_mask: hala_gfx::HalaPipelineStageFlags2::EARLY_FRAGMENT_TESTS | hala_gfx::HalaPipelineStageFlags2::LATE_FRAGMENT_TESTS,
+          aspect_mask: hala_gfx::HalaImageAspectFlags::DEPTH,
+          image: depth_image.raw,
+          ..Default::default()
+        },
+      ],
+    );
+
+    // Setup deferred G-buffer read barriers.
+    command_buffers.set_image_barriers(
+      index,
+      &[
+        hala_gfx::HalaImageBarrierInfo {
+          old_layout: hala_gfx::HalaImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+          new_layout: hala_gfx::HalaImageLayout::SHADER_READ_ONLY_OPTIMAL,
+          src_access_mask: hala_gfx::HalaAccessFlags2::COLOR_ATTACHMENT_WRITE,
+          dst_access_mask: hala_gfx::HalaAccessFlags2::INPUT_ATTACHMENT_READ,
+          src_stage_mask: hala_gfx::HalaPipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT,
+          dst_stage_mask: hala_gfx::HalaPipelineStageFlags2::FRAGMENT_SHADER,
+          aspect_mask: hala_gfx::HalaImageAspectFlags::COLOR,
+          image: albedo_image.raw,
+          ..Default::default()
+        },
+        hala_gfx::HalaImageBarrierInfo {
+          old_layout: hala_gfx::HalaImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+          new_layout: hala_gfx::HalaImageLayout::SHADER_READ_ONLY_OPTIMAL,
+          src_access_mask: hala_gfx::HalaAccessFlags2::COLOR_ATTACHMENT_WRITE,
+          dst_access_mask: hala_gfx::HalaAccessFlags2::INPUT_ATTACHMENT_READ,
+          src_stage_mask: hala_gfx::HalaPipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT,
+          dst_stage_mask: hala_gfx::HalaPipelineStageFlags2::FRAGMENT_SHADER,
+          aspect_mask: hala_gfx::HalaImageAspectFlags::COLOR,
+          image: normal_image.raw,
+          ..Default::default()
+        },
+        hala_gfx::HalaImageBarrierInfo {
+          old_layout: hala_gfx::HalaImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+          new_layout: hala_gfx::HalaImageLayout::DEPTH_STENCIL_READ_ONLY_OPTIMAL,
+          src_access_mask: hala_gfx::HalaAccessFlags2::DEPTH_STENCIL_ATTACHMENT_WRITE,
+          dst_access_mask: hala_gfx::HalaAccessFlags2::INPUT_ATTACHMENT_READ,
+          src_stage_mask: hala_gfx::HalaPipelineStageFlags2::EARLY_FRAGMENT_TESTS | hala_gfx::HalaPipelineStageFlags2::LATE_FRAGMENT_TESTS,
+          dst_stage_mask: hala_gfx::HalaPipelineStageFlags2::FRAGMENT_SHADER,
+          aspect_mask: hala_gfx::HalaImageAspectFlags::DEPTH,
+          image: depth_image.raw,
+          ..Default::default()
+        },
+      ],
+    );
+
+    if cfg!(debug_assertions) {
+      command_buffers.end_debug_label(index);
+      command_buffers.begin_debug_label(index, "Lighting", [0.0, 1.0, 0.0, 1.0]);
+    }
+
+    // Setup swapchain barrier.
+    command_buffers.set_swapchain_image_barrier(
+      index,
+      &context.swapchain,
+      &hala_gfx::HalaImageBarrierInfo {
+        old_layout: hala_gfx::HalaImageLayout::UNDEFINED,
+        new_layout: hala_gfx::HalaImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+        src_access_mask: hala_gfx::HalaAccessFlags2::NONE,
+        dst_access_mask: hala_gfx::HalaAccessFlags2::COLOR_ATTACHMENT_WRITE,
+        src_stage_mask: hala_gfx::HalaPipelineStageFlags2::TOP_OF_PIPE,
+        dst_stage_mask: hala_gfx::HalaPipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT,
+        aspect_mask: hala_gfx::HalaImageAspectFlags::COLOR,
+        ..Default::default()
+      },
+      &hala_gfx::HalaImageBarrierInfo {
+        old_layout: hala_gfx::HalaImageLayout::UNDEFINED,
+        new_layout: hala_gfx::HalaImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+        src_access_mask: hala_gfx::HalaAccessFlags2::NONE,
+        dst_access_mask: hala_gfx::HalaAccessFlags2::DEPTH_STENCIL_ATTACHMENT_WRITE,
+        src_stage_mask: hala_gfx::HalaPipelineStageFlags2::EARLY_FRAGMENT_TESTS | hala_gfx::HalaPipelineStageFlags2::LATE_FRAGMENT_TESTS,
+        dst_stage_mask: hala_gfx::HalaPipelineStageFlags2::EARLY_FRAGMENT_TESTS | hala_gfx::HalaPipelineStageFlags2::LATE_FRAGMENT_TESTS,
+        aspect_mask: hala_gfx::HalaImageAspectFlags::DEPTH | if context.swapchain.has_stencil { hala_gfx::HalaImageAspectFlags::STENCIL } else { hala_gfx::HalaImageAspectFlags::empty() },
+        ..Default::default()
+      }
+    );
+
+    // Rendering.
+    command_buffers.begin_rendering(
+      index,
+      &context.swapchain,
+      (0, 0, self.info.width, self.info.height),
+      Some([64.0 / 255.0, 46.0 / 255.0, 122.0 / 255.0, 1.0]),
+      Some(0.0),
+      Some(0),
+    );
+
+    // Setup viewport.
+    command_buffers.set_viewport(
+      index,
+      0,
+      &[
+        (
+          0.,
+          self.info.height as f32,
+          self.info.width as f32,
+          -(self.info.height as f32), // For vulkan y is down.
+          0.,
+          1.
+        ),
+      ],
+    );
+
+    // Draw UI.
+    if cfg!(debug_assertions) {
+      command_buffers.end_debug_label(index);
+      command_buffers.begin_debug_label(index, "Draw UI", [0.0, 0.0, 1.0, 1.0]);
+    }
+    ui_fn(index, command_buffers)?;
+    if cfg!(debug_assertions) {
+      command_buffers.end_debug_label(index);
+    }
+
+    command_buffers.end_rendering(index);
+
+    // Setup swapchain barrier.
+    command_buffers.set_image_barriers(
+      index,
+      &[hala_gfx::HalaImageBarrierInfo {
+        old_layout: hala_gfx::HalaImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+        new_layout: hala_gfx::HalaImageLayout::PRESENT_SRC,
+        src_access_mask: hala_gfx::HalaAccessFlags2::COLOR_ATTACHMENT_WRITE,
+        dst_access_mask: hala_gfx::HalaAccessFlags2::NONE,
+        src_stage_mask: hala_gfx::HalaPipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT,
+        dst_stage_mask: hala_gfx::HalaPipelineStageFlags2::BOTTOM_OF_PIPE,
+        aspect_mask: hala_gfx::HalaImageAspectFlags::COLOR,
+        image: context.swapchain.images[index],
+        ..Default::default()
+      }],
+    );
+    if cfg!(debug_assertions) {
+      command_buffers.end_debug_label(index);
+    }
+
+    // Write end timestamp and end command buffer.
+    command_buffers.write_timestamp(
+      index,
+      hala_gfx::HalaPipelineStageFlags2::ALL_COMMANDS,
+      &context.timestamp_query_pool,
+      (index * 2 + 1) as u32);
+    command_buffers.end(index)?;
+
+    Ok(())
   }
 
   /// Create G-buffer images.
