@@ -614,106 +614,7 @@ impl HalaRendererTrait for HalaRenderer {
         Some(0.0),
         Some(0),  // We use reverse Z, so clear depth to 0.0.
         |index, command_buffers| {
-          command_buffers.set_viewport(
-            index,
-            0,
-            &[
-              (
-                0.,
-                self.info.height as f32,
-                self.info.width as f32,
-                -(self.info.height as f32), // For vulkan y is down.
-                0.,
-                1.
-              ),
-            ],
-          );
-
-          // Render the scene.
-          let mut primitive_index = 0u32;
-          let scene = self.scene_in_gpu.as_ref().ok_or(hala_gfx::HalaGfxError::new("The scene in GPU is none!", None))?;
-          for (mesh_index, mesh) in scene.meshes.iter().enumerate() {
-            for primitive in mesh.primitives.iter() {
-              let material_type = scene.material_types[primitive.material_index as usize] as usize;
-              if material_type >= scene.materials.len() {
-                return Err(hala_gfx::HalaGfxError::new("The material type index is out of range!", None));
-              }
-              let material_deferred = scene.material_deferred_flags[primitive.material_index as usize];
-
-              // Build push constants.
-              let dispatch_size_x = (primitive.meshlet_count + 32 - 1) / 32;  // 32 threads per task group.
-              let mut push_constants = Vec::new();
-              push_constants.extend_from_slice(&(mesh_index as u32).to_le_bytes());
-              push_constants.extend_from_slice(&primitive.material_index.to_le_bytes());
-              push_constants.extend_from_slice(&primitive_index.to_le_bytes());
-              if self.use_mesh_shader {
-                push_constants.extend_from_slice(&primitive.meshlet_count.to_le_bytes());
-                push_constants.extend_from_slice(&dispatch_size_x.to_le_bytes());
-              }
-
-              if !material_deferred {
-                // Use specific material type pipeline state object.
-                command_buffers.bind_graphics_pipeline(index, &self.forward_graphics_pipelines[material_type]);
-
-                // Bind descriptor sets.
-                command_buffers.bind_graphics_descriptor_sets(
-                  index,
-                  &self.forward_graphics_pipelines[material_type],
-                  0,
-                  &[
-                    self.static_descriptor_set.as_ref(),
-                    self.dynamic_descriptor_set.as_ref().ok_or(hala_gfx::HalaGfxError::new("The dynamic descriptor set is none!", None))?,
-                    self.textures_descriptor_set.as_ref().ok_or(hala_gfx::HalaGfxError::new("The textures descriptor set is none!", None))?],
-                  &[],
-                );
-
-                // Push constants.
-                command_buffers.push_constants(
-                  index,
-                  self.forward_graphics_pipelines[material_type].layout,
-                  if !self.use_mesh_shader { hala_gfx::HalaShaderStageFlags::VERTEX } else { hala_gfx::HalaShaderStageFlags::TASK | hala_gfx::HalaShaderStageFlags::MESH }
-                    | hala_gfx::HalaShaderStageFlags::FRAGMENT,
-                  0,
-                  push_constants.as_slice(),
-                );
-
-                // Draw.
-                if !self.use_mesh_shader {
-                  // Bind vertex buffers.
-                  command_buffers.bind_vertex_buffers(
-                    index,
-                    0,
-                    &[primitive.vertex_buffer.as_ref()],
-                    &[0]);
-
-                  // Bind index buffer.
-                  command_buffers.bind_index_buffers(
-                    index,
-                    &[primitive.index_buffer.as_ref()],
-                    &[0],
-                    hala_gfx::HalaIndexType::UINT32);
-
-                  command_buffers.draw_indexed(
-                    index,
-                    primitive.index_count,
-                    1,
-                    0,
-                    0,
-                    0
-                  );
-                } else {
-                  command_buffers.draw_mesh_tasks(
-                    index,
-                    dispatch_size_x,
-                    1,
-                    1,
-                  );
-                }
-              }
-
-              primitive_index += 1;
-            }
-          }
+          self.draw_scene(index, command_buffers, true)?;
 
           ui_fn(index, command_buffers)?;
 
@@ -835,6 +736,115 @@ impl HalaRenderer {
     })
   }
 
+  /// Draw the scene.
+  /// param index: The index of the current image.
+  /// param command_buffers: The command buffers.
+  /// return: The result.
+  fn draw_scene(&self, index: usize, command_buffers: &hala_gfx::HalaCommandBufferSet, is_forward: bool) -> Result<(), HalaRendererError> {
+    command_buffers.set_viewport(
+      index,
+      0,
+      &[
+        (
+          0.,
+          self.info.height as f32,
+          self.info.width as f32,
+          -(self.info.height as f32), // For vulkan y is down.
+          0.,
+          1.
+        ),
+      ],
+    );
+
+    // Render the scene.
+    let mut primitive_index = 0u32;
+    let scene = self.scene_in_gpu.as_ref().ok_or(hala_gfx::HalaGfxError::new("The scene in GPU is none!", None))?;
+    for (mesh_index, mesh) in scene.meshes.iter().enumerate() {
+      for primitive in mesh.primitives.iter() {
+        let material_type = scene.material_types[primitive.material_index as usize] as usize;
+        if material_type >= scene.materials.len() {
+          return Err(HalaRendererError::new("The material type index is out of range!", None));
+        }
+        let material_deferred = scene.material_deferred_flags[primitive.material_index as usize];
+
+        if !material_deferred == is_forward {
+          // Build push constants.
+          let dispatch_size_x = (primitive.meshlet_count + 32 - 1) / 32;  // 32 threads per task group.
+          let mut push_constants = Vec::new();
+          push_constants.extend_from_slice(&(mesh_index as u32).to_le_bytes());
+          push_constants.extend_from_slice(&primitive.material_index.to_le_bytes());
+          push_constants.extend_from_slice(&primitive_index.to_le_bytes());
+          if self.use_mesh_shader {
+            push_constants.extend_from_slice(&primitive.meshlet_count.to_le_bytes());
+            push_constants.extend_from_slice(&dispatch_size_x.to_le_bytes());
+          }
+
+          // Use specific material type pipeline state object.
+          command_buffers.bind_graphics_pipeline(index, &self.forward_graphics_pipelines[material_type]);
+
+          // Bind descriptor sets.
+          command_buffers.bind_graphics_descriptor_sets(
+            index,
+            &self.forward_graphics_pipelines[material_type],
+            0,
+            &[
+              self.static_descriptor_set.as_ref(),
+              self.dynamic_descriptor_set.as_ref().ok_or(hala_gfx::HalaGfxError::new("The dynamic descriptor set is none!", None))?,
+              self.textures_descriptor_set.as_ref().ok_or(hala_gfx::HalaGfxError::new("The textures descriptor set is none!", None))?],
+            &[],
+          );
+
+          // Push constants.
+          command_buffers.push_constants(
+            index,
+            self.forward_graphics_pipelines[material_type].layout,
+            if !self.use_mesh_shader { hala_gfx::HalaShaderStageFlags::VERTEX } else { hala_gfx::HalaShaderStageFlags::TASK | hala_gfx::HalaShaderStageFlags::MESH }
+              | hala_gfx::HalaShaderStageFlags::FRAGMENT,
+            0,
+            push_constants.as_slice(),
+          );
+
+          // Draw.
+          if !self.use_mesh_shader {
+            // Bind vertex buffers.
+            command_buffers.bind_vertex_buffers(
+              index,
+              0,
+              &[primitive.vertex_buffer.as_ref()],
+              &[0]);
+
+            // Bind index buffer.
+            command_buffers.bind_index_buffers(
+              index,
+              &[primitive.index_buffer.as_ref()],
+              &[0],
+              hala_gfx::HalaIndexType::UINT32);
+
+            command_buffers.draw_indexed(
+              index,
+              primitive.index_count,
+              1,
+              0,
+              0,
+              0
+            );
+          } else {
+            command_buffers.draw_mesh_tasks(
+              index,
+              dispatch_size_x,
+              1,
+              1,
+            );
+          }
+        }
+
+        primitive_index += 1;
+      }
+    }
+
+    Ok(())
+  }
+
   /// Record the deferred rendering command buffer.
   /// param index: The index of the current image.
   /// param command_buffers: The command buffers.
@@ -899,6 +909,20 @@ impl HalaRenderer {
         },
       ],
     );
+
+    command_buffers.begin_rendering_with_rt(
+      index,
+      &[albedo_image, normal_image],
+      Some(depth_image),
+      (0, 0, self.info.width, self.info.height),
+      &[Some([0.0, 0.0, 0.0, 1.0]), Some([0.0, 0.0, 0.0, 1.0])],
+      Some(0.0),
+      None,
+    );
+
+    self.draw_scene(index, command_buffers, false)?;
+
+    command_buffers.end_rendering(index);
 
     // Setup deferred G-buffer read barriers.
     command_buffers.set_image_barriers(

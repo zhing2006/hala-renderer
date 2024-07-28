@@ -34,6 +34,13 @@ impl std::convert::From<hala_gfx::HalaGfxError> for HalaRendererError {
   }
 }
 
+impl std::convert::From<HalaRendererError> for hala_gfx::HalaGfxError {
+  fn from(err: HalaRendererError) -> Self {
+    let msg = err.message().to_string();
+    hala_gfx::HalaGfxError::new(&msg, Some(Box::new(err)))
+  }
+}
+
 /// The implementation Display trait for the error type of the hala-renderer crate.
 impl std::fmt::Display for HalaRendererError {
   /// Format the error.
