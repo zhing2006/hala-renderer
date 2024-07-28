@@ -318,7 +318,7 @@ impl HalaSceneGPUUploader {
 
       material_buffers.push(material_buffer);
       material_types.push(gpu_material._type);
-      material_deferred_flags.push(material.opacity < 1.0);
+      material_deferred_flags.push(material.opacity >= 1.0);
     }
 
     // Create the samplers and images.

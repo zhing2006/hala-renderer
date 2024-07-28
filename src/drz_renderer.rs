@@ -62,6 +62,11 @@ pub struct HalaRenderer {
   pub(crate) albedo_image: Option<hala_gfx::HalaImage>,
   pub(crate) normal_image: Option<hala_gfx::HalaImage>,
 
+  pub(crate) lighting_descriptor_set: Option<hala_gfx::HalaDescriptorSet>,
+  pub(crate) lighting_vertex_shader: Option<hala_gfx::HalaShader>,
+  pub(crate) lighting_fragment_shader: Option<hala_gfx::HalaShader>,
+  pub(crate) lighting_graphics_pipeline: Option<hala_gfx::HalaGraphicsPipeline>,
+
   pub(crate) static_descriptor_set: std::mem::ManuallyDrop<hala_gfx::HalaDescriptorSet>,
   pub(crate) global_uniform_buffer: std::mem::ManuallyDrop<hala_gfx::HalaBuffer>,
   pub(crate) dynamic_descriptor_set: Option<hala_gfx::HalaDescriptorSet>,
@@ -105,6 +110,10 @@ impl Drop for HalaRenderer {
     self.depth_image = None;
     self.albedo_image = None;
     self.normal_image = None;
+    self.lighting_descriptor_set = None;
+    self.lighting_vertex_shader = None;
+    self.lighting_fragment_shader = None;
+    self.lighting_graphics_pipeline = None;
 
     self.object_uniform_buffers.clear();
     self.dynamic_descriptor_set = None;
@@ -551,6 +560,38 @@ impl HalaRendererTrait for HalaRenderer {
       }
     }
 
+    if self.use_deferred {
+      let vertex_shader = self.lighting_vertex_shader.as_ref().ok_or(HalaRendererError::new("The lighting pass vertex shader is none!", None))?;
+      let fragment_shader = self.lighting_fragment_shader.as_ref().ok_or(HalaRendererError::new("The lighting pass fragment shader is none!", None))?;
+      let descriptor_set = self.lighting_descriptor_set.as_ref().ok_or(HalaRendererError::new("The lighting pass descriptor set is none!", None))?;
+
+      let lighting_graphics_pipeline = hala_gfx::HalaGraphicsPipeline::new(
+        Rc::clone(&context.logical_device),
+        &context.swapchain,
+        &[
+          &self.static_descriptor_set.layout,
+          &dynamic_descriptor_set.layout,
+          &descriptor_set.layout,
+        ],
+        hala_gfx::HalaPipelineCreateFlags::default(),
+        &[] as &[hala_gfx::HalaVertexInputAttributeDescription],
+        &[] as &[hala_gfx::HalaVertexInputBindingDescription],
+        &[] as &[hala_gfx::HalaPushConstantRange],
+        hala_gfx::HalaPrimitiveTopology::TRIANGLE_STRIP,
+        &hala_gfx::HalaBlendState::new(hala_gfx::HalaBlendFactor::ONE, hala_gfx::HalaBlendFactor::ZERO, hala_gfx::HalaBlendOp::ADD),
+        &hala_gfx::HalaBlendState::new(hala_gfx::HalaBlendFactor::ONE, hala_gfx::HalaBlendFactor::ZERO, hala_gfx::HalaBlendOp::ADD),
+        &hala_gfx::HalaRasterizerState::new(hala_gfx::HalaFrontFace::COUNTER_CLOCKWISE, hala_gfx::HalaCullModeFlags::NONE, hala_gfx::HalaPolygonMode::FILL, 1.0),
+        &hala_gfx::HalaDepthState::new(false, false, hala_gfx::HalaCompareOp::GREATER), // We use reverse Z, so greater is less.
+        None,
+        &[&vertex_shader, &fragment_shader],
+        &[hala_gfx::HalaDynamicState::VIEWPORT],
+        Some(&pipeline_cache),
+        "lighting_pass.graphics_pipeline",
+      )?;
+
+      self.lighting_graphics_pipeline = Some(lighting_graphics_pipeline);
+    }
+
     // Save pipeline cache.
     pipeline_cache.save("./out/pipeline_cache.bin")?;
 
@@ -714,6 +755,11 @@ impl HalaRenderer {
       albedo_image: None,
       normal_image: None,
 
+      lighting_descriptor_set: None,
+      lighting_vertex_shader: None,
+      lighting_fragment_shader: None,
+      lighting_graphics_pipeline: None,
+
       static_descriptor_set: std::mem::ManuallyDrop::new(static_descriptor_set),
       dynamic_descriptor_set: None,
       global_uniform_buffer: std::mem::ManuallyDrop::new(global_uniform_buffer),
@@ -767,6 +813,12 @@ impl HalaRenderer {
         }
         let material_deferred = scene.material_deferred_flags[primitive.material_index as usize];
 
+        let graphics_pipelines = if is_forward {
+          &self.forward_graphics_pipelines
+        } else {
+          &self.deferred_graphics_pipelines
+        };
+
         if !material_deferred == is_forward {
           // Build push constants.
           let dispatch_size_x = (primitive.meshlet_count + 32 - 1) / 32;  // 32 threads per task group.
@@ -780,12 +832,12 @@ impl HalaRenderer {
           }
 
           // Use specific material type pipeline state object.
-          command_buffers.bind_graphics_pipeline(index, &self.forward_graphics_pipelines[material_type]);
+          command_buffers.bind_graphics_pipeline(index, &graphics_pipelines[material_type]);
 
           // Bind descriptor sets.
           command_buffers.bind_graphics_descriptor_sets(
             index,
-            &self.forward_graphics_pipelines[material_type],
+            &graphics_pipelines[material_type],
             0,
             &[
               self.static_descriptor_set.as_ref(),
@@ -797,7 +849,7 @@ impl HalaRenderer {
           // Push constants.
           command_buffers.push_constants(
             index,
-            self.forward_graphics_pipelines[material_type].layout,
+            graphics_pipelines[material_type].layout,
             if !self.use_mesh_shader { hala_gfx::HalaShaderStageFlags::VERTEX } else { hala_gfx::HalaShaderStageFlags::TASK | hala_gfx::HalaShaderStageFlags::MESH }
               | hala_gfx::HalaShaderStageFlags::FRAGMENT,
             0,
@@ -1000,8 +1052,8 @@ impl HalaRenderer {
       index,
       &context.swapchain,
       (0, 0, self.info.width, self.info.height),
-      Some([64.0 / 255.0, 46.0 / 255.0, 122.0 / 255.0, 1.0]),
-      Some(0.0),
+      Some([1.0, 0.0, 0.0, 1.0]),
+      None,
       Some(0),
     );
 
@@ -1020,6 +1072,28 @@ impl HalaRenderer {
         ),
       ],
     );
+
+    // Bind lighting graphics pipeline.
+    let pipeline = self.lighting_graphics_pipeline.as_ref().ok_or(HalaRendererError::new("The lighting pass graphics pipeline is none!", None))?;
+    command_buffers.bind_graphics_pipeline(index, pipeline);
+
+    // Bind descriptor sets.
+    let dynamic_descriptor_set = self.dynamic_descriptor_set.as_ref().ok_or(HalaRendererError::new("The dynamic descriptor set is none!", None))?;
+    let descriptor_set = self.lighting_descriptor_set.as_ref().ok_or(HalaRendererError::new("The lighting pass descriptor set is none!", None))?;
+    command_buffers.bind_graphics_descriptor_sets(
+      index,
+      pipeline,
+      0,
+      &[
+        self.static_descriptor_set.as_ref(),
+        dynamic_descriptor_set,
+        descriptor_set,
+      ],
+      &[],
+    );
+
+    // Draw.
+    command_buffers.draw(index, 4, 1, 0, 0);
 
     // Draw UI.
     if cfg!(debug_assertions) {
@@ -1067,12 +1141,16 @@ impl HalaRenderer {
   /// param use_transient: Use transient images or not.
   /// param albedo_format: The format of the albedo image.
   /// param normal_format: The format of the normal image.
+  /// param vertex_file_path: The vertex shader file path.
+  /// param fragment_file_path: The fragment shader file path.
   /// return: The result.
   pub fn create_gbuffer_images(
     &mut self,
     use_transient: bool,
     albedo_format: hala_gfx::HalaFormat,
     normal_format: hala_gfx::HalaFormat,
+    vertex_file_path: &str,
+    fragment_file_path: &str,
   ) -> Result<(), HalaRendererError> {
     let rt_usage_flags = if use_transient {
       hala_gfx::HalaImageUsageFlags::INPUT_ATTACHMENT | hala_gfx::HalaImageUsageFlags::TRANSIENT_ATTACHMENT
@@ -1119,10 +1197,66 @@ impl HalaRenderer {
       "normal.image",
     )?;
 
+    // Create lighting descriptor set.
+    let lighting_descriptor_set = hala_gfx::HalaDescriptorSet::new_static(
+      Rc::clone(&self.resources.context.borrow().logical_device),
+      Rc::clone(&self.resources.descriptor_pool),
+      hala_gfx::HalaDescriptorSetLayout::new(
+        Rc::clone(&self.resources.context.borrow().logical_device),
+        &[
+          hala_gfx::HalaDescriptorSetLayoutBinding { // Depth image.
+            binding_index: 0,
+            descriptor_type: hala_gfx::HalaDescriptorType::INPUT_ATTACHMENT,
+            descriptor_count: 1,
+            stage_flags: hala_gfx::HalaShaderStageFlags::FRAGMENT,
+            binding_flags: hala_gfx::HalaDescriptorBindingFlags::PARTIALLY_BOUND
+          },
+          hala_gfx::HalaDescriptorSetLayoutBinding { // Albedo image.
+            binding_index: 1,
+            descriptor_type: hala_gfx::HalaDescriptorType::INPUT_ATTACHMENT,
+            descriptor_count: 1,
+            stage_flags: hala_gfx::HalaShaderStageFlags::FRAGMENT,
+            binding_flags: hala_gfx::HalaDescriptorBindingFlags::PARTIALLY_BOUND
+          },
+          hala_gfx::HalaDescriptorSetLayoutBinding { // Normal image.
+            binding_index: 2,
+            descriptor_type: hala_gfx::HalaDescriptorType::INPUT_ATTACHMENT,
+            descriptor_count: 1,
+            stage_flags: hala_gfx::HalaShaderStageFlags::FRAGMENT,
+            binding_flags: hala_gfx::HalaDescriptorBindingFlags::PARTIALLY_BOUND
+          },
+        ],
+        "lighting_pass.descriptor_set_layout",
+      )?,
+      0,
+      "lighting_pass.descriptor_set",
+    )?;
+    lighting_descriptor_set.update_input_attachments(0, 0, &[&depth_image]);
+    lighting_descriptor_set.update_input_attachments(0, 1, &[&albedo_image]);
+    lighting_descriptor_set.update_input_attachments(0, 2, &[&normal_image]);
+
+    let vertex_shader = hala_gfx::HalaShader::with_file(
+      Rc::clone(&self.resources.context.borrow().logical_device),
+      vertex_file_path,
+      hala_gfx::HalaShaderStageFlags::VERTEX,
+      hala_gfx::HalaRayTracingShaderGroupType::GENERAL,
+      "lighting_pass.vert",
+    )?;
+    let fragment_shader = hala_gfx::HalaShader::with_file(
+      Rc::clone(&self.resources.context.borrow().logical_device),
+      fragment_file_path,
+      hala_gfx::HalaShaderStageFlags::FRAGMENT,
+      hala_gfx::HalaRayTracingShaderGroupType::GENERAL,
+      "lighting_pass.frag",
+    )?;
+
     self.use_deferred = true;
     self.depth_image = Some(depth_image);
     self.albedo_image = Some(albedo_image);
     self.normal_image = Some(normal_image);
+    self.lighting_descriptor_set = Some(lighting_descriptor_set);
+    self.lighting_vertex_shader = Some(vertex_shader);
+    self.lighting_fragment_shader = Some(fragment_shader);
 
     Ok(())
   }
