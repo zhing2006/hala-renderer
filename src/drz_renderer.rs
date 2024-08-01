@@ -827,7 +827,7 @@ impl HalaRenderer {
           &self.deferred_graphics_pipelines
         };
 
-        if !material_deferred == is_forward {
+        if material_deferred != is_forward {
           // Build push constants.
           let dispatch_size_x = (primitive.meshlet_count + 32 - 1) / 32;  // 32 threads per task group.
           let mut push_constants = Vec::new();
