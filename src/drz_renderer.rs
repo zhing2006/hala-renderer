@@ -62,7 +62,7 @@ pub struct HalaRenderer {
   pub(crate) albedo_image: Option<hala_gfx::HalaImage>,
   pub(crate) normal_image: Option<hala_gfx::HalaImage>,
 
-  pub(crate) use_subpasses: bool,
+  pub(crate) use_deferred_subpasses: bool,
   pub(crate) deferred_render_pass: Option<hala_gfx::HalaRenderPass>,
   pub(crate) deferred_framebuffers: Option<hala_gfx::HalaFrameBufferSet>,
 
@@ -118,6 +118,7 @@ impl Drop for HalaRenderer {
     self.lighting_fragment_shader = None;
     self.lighting_graphics_pipeline = None;
     self.deferred_render_pass = None;
+    self.deferred_framebuffers = None;
 
     self.object_uniform_buffers.clear();
     self.dynamic_descriptor_set = None;
@@ -527,40 +528,82 @@ impl HalaRendererTrait for HalaRenderer {
         let normal_image = self.normal_image.as_ref().ok_or(
           HalaRendererError::new("The deferred flag is setted, but the G-Buffer normal image is none!", None)
         )?;
-        self.deferred_graphics_pipelines.push(
-          hala_gfx::HalaGraphicsPipeline::with_format_and_size(
-            Rc::clone(&context.logical_device),
-            &[albedo_image.format, normal_image.format],
-            Some(depth_image.format),
-            self.info.width,
-            self.info.height,
-            &descriptor_set_layouts,
-            flags,
-            &vertex_attribute_descriptions,
-            &vertex_binding_descriptions,
-            &push_constant_ranges,
-            hala_gfx::HalaPrimitiveTopology::TRIANGLE_LIST,
-            &[
-              &hala_gfx::HalaBlendState::new(hala_gfx::HalaBlendFactor::ONE, hala_gfx::HalaBlendFactor::ZERO, hala_gfx::HalaBlendOp::ADD),
-              &hala_gfx::HalaBlendState::new(hala_gfx::HalaBlendFactor::ONE, hala_gfx::HalaBlendFactor::ZERO, hala_gfx::HalaBlendOp::ADD),
-            ],
-            &[
-              &hala_gfx::HalaBlendState::new(hala_gfx::HalaBlendFactor::ONE, hala_gfx::HalaBlendFactor::ZERO, hala_gfx::HalaBlendOp::ADD),
-              &hala_gfx::HalaBlendState::new(hala_gfx::HalaBlendFactor::ONE, hala_gfx::HalaBlendFactor::ZERO, hala_gfx::HalaBlendOp::ADD),
-            ],
-            &hala_gfx::HalaRasterizerState::new(hala_gfx::HalaFrontFace::COUNTER_CLOCKWISE, hala_gfx::HalaCullModeFlags::BACK, hala_gfx::HalaPolygonMode::FILL, 1.0),
-            &hala_gfx::HalaDepthState::new(true, true, hala_gfx::HalaCompareOp::GREATER), // We use reverse Z, so greater is less.
-            None,
-            shaders.as_slice(),
-            &[hala_gfx::HalaDynamicState::VIEWPORT],
-            Some(&pipeline_cache),
-            &if self.use_mesh_shader {
-              format!("modern_deferred_{}.graphics_pipeline", i)
-            } else {
-              format!("traditional_deferred_{}.graphics_pipeline", i)
-            },
-          )?
-        );
+        if self.use_deferred_subpasses {
+          let deferred_render_pass = self.deferred_render_pass.as_ref().ok_or(
+            HalaRendererError::new("The deferred subpasses flag is setted, but the deferred render pass is none!", None)
+          )?;
+          self.deferred_graphics_pipelines.push(
+            hala_gfx::HalaGraphicsPipeline::with_renderpass_format_and_size(
+              Rc::clone(&context.logical_device),
+              &[albedo_image.format, normal_image.format],
+              Some(depth_image.format),
+              self.info.width,
+              self.info.height,
+              &descriptor_set_layouts,
+              flags,
+              &vertex_attribute_descriptions,
+              &vertex_binding_descriptions,
+              &push_constant_ranges,
+              hala_gfx::HalaPrimitiveTopology::TRIANGLE_LIST,
+              &[
+                &hala_gfx::HalaBlendState::new(hala_gfx::HalaBlendFactor::ONE, hala_gfx::HalaBlendFactor::ZERO, hala_gfx::HalaBlendOp::ADD),
+                &hala_gfx::HalaBlendState::new(hala_gfx::HalaBlendFactor::ONE, hala_gfx::HalaBlendFactor::ZERO, hala_gfx::HalaBlendOp::ADD),
+              ],
+              &[
+                &hala_gfx::HalaBlendState::new(hala_gfx::HalaBlendFactor::ONE, hala_gfx::HalaBlendFactor::ZERO, hala_gfx::HalaBlendOp::ADD),
+                &hala_gfx::HalaBlendState::new(hala_gfx::HalaBlendFactor::ONE, hala_gfx::HalaBlendFactor::ZERO, hala_gfx::HalaBlendOp::ADD),
+              ],
+              &hala_gfx::HalaRasterizerState::new(hala_gfx::HalaFrontFace::COUNTER_CLOCKWISE, hala_gfx::HalaCullModeFlags::BACK, hala_gfx::HalaPolygonMode::FILL, 1.0),
+              &hala_gfx::HalaDepthState::new(true, true, hala_gfx::HalaCompareOp::GREATER), // We use reverse Z, so greater is less.
+              None,
+              shaders.as_slice(),
+              &[hala_gfx::HalaDynamicState::VIEWPORT],
+              Some(deferred_render_pass),
+              0,
+              Some(&pipeline_cache),
+              &if self.use_mesh_shader {
+                format!("modern_deferred_subpass_{}.graphics_pipeline", i)
+              } else {
+                format!("traditional_deferred_subpass_{}.graphics_pipeline", i)
+              },
+            )?
+          );
+        } else {
+          self.deferred_graphics_pipelines.push(
+            hala_gfx::HalaGraphicsPipeline::with_format_and_size(
+              Rc::clone(&context.logical_device),
+              &[albedo_image.format, normal_image.format],
+              Some(depth_image.format),
+              self.info.width,
+              self.info.height,
+              &descriptor_set_layouts,
+              flags,
+              &vertex_attribute_descriptions,
+              &vertex_binding_descriptions,
+              &push_constant_ranges,
+              hala_gfx::HalaPrimitiveTopology::TRIANGLE_LIST,
+              &[
+                &hala_gfx::HalaBlendState::new(hala_gfx::HalaBlendFactor::ONE, hala_gfx::HalaBlendFactor::ZERO, hala_gfx::HalaBlendOp::ADD),
+                &hala_gfx::HalaBlendState::new(hala_gfx::HalaBlendFactor::ONE, hala_gfx::HalaBlendFactor::ZERO, hala_gfx::HalaBlendOp::ADD),
+              ],
+              &[
+                &hala_gfx::HalaBlendState::new(hala_gfx::HalaBlendFactor::ONE, hala_gfx::HalaBlendFactor::ZERO, hala_gfx::HalaBlendOp::ADD),
+                &hala_gfx::HalaBlendState::new(hala_gfx::HalaBlendFactor::ONE, hala_gfx::HalaBlendFactor::ZERO, hala_gfx::HalaBlendOp::ADD),
+              ],
+              &hala_gfx::HalaRasterizerState::new(hala_gfx::HalaFrontFace::COUNTER_CLOCKWISE, hala_gfx::HalaCullModeFlags::BACK, hala_gfx::HalaPolygonMode::FILL, 1.0),
+              &hala_gfx::HalaDepthState::new(true, true, hala_gfx::HalaCompareOp::GREATER), // We use reverse Z, so greater is less.
+              None,
+              shaders.as_slice(),
+              &[hala_gfx::HalaDynamicState::VIEWPORT],
+              Some(&pipeline_cache),
+              &if self.use_mesh_shader {
+                format!("modern_deferred_{}.graphics_pipeline", i)
+              } else {
+                format!("traditional_deferred_{}.graphics_pipeline", i)
+              },
+            )?
+          );
+        }
       }
     }
 
@@ -568,30 +611,66 @@ impl HalaRendererTrait for HalaRenderer {
       let vertex_shader = self.lighting_vertex_shader.as_ref().ok_or(HalaRendererError::new("The lighting pass vertex shader is none!", None))?;
       let fragment_shader = self.lighting_fragment_shader.as_ref().ok_or(HalaRendererError::new("The lighting pass fragment shader is none!", None))?;
       let descriptor_set = self.lighting_descriptor_set.as_ref().ok_or(HalaRendererError::new("The lighting pass descriptor set is none!", None))?;
+      let deferred_render_pass = self.deferred_render_pass.as_ref().ok_or(HalaRendererError::new("The deferred render pass is none!", None))?;
 
-      let lighting_graphics_pipeline = hala_gfx::HalaGraphicsPipeline::new(
-        Rc::clone(&context.logical_device),
-        &context.swapchain,
-        &[
-          &self.static_descriptor_set.layout,
-          &dynamic_descriptor_set.layout,
-          &descriptor_set.layout,
-        ],
-        hala_gfx::HalaPipelineCreateFlags::default(),
-        &[] as &[hala_gfx::HalaVertexInputAttributeDescription],
-        &[] as &[hala_gfx::HalaVertexInputBindingDescription],
-        &[] as &[hala_gfx::HalaPushConstantRange],
-        hala_gfx::HalaPrimitiveTopology::TRIANGLE_STRIP,
-        &hala_gfx::HalaBlendState::new(hala_gfx::HalaBlendFactor::ONE, hala_gfx::HalaBlendFactor::ZERO, hala_gfx::HalaBlendOp::ADD),
-        &hala_gfx::HalaBlendState::new(hala_gfx::HalaBlendFactor::ONE, hala_gfx::HalaBlendFactor::ZERO, hala_gfx::HalaBlendOp::ADD),
-        &hala_gfx::HalaRasterizerState::new(hala_gfx::HalaFrontFace::COUNTER_CLOCKWISE, hala_gfx::HalaCullModeFlags::NONE, hala_gfx::HalaPolygonMode::FILL, 1.0),
-        &hala_gfx::HalaDepthState::new(false, false, hala_gfx::HalaCompareOp::GREATER), // We use reverse Z, so greater is less.
-        None,
-        &[&vertex_shader, &fragment_shader],
-        &[hala_gfx::HalaDynamicState::VIEWPORT],
-        Some(&pipeline_cache),
-        "lighting_pass.graphics_pipeline",
-      )?;
+      let lighting_graphics_pipeline = if self.use_deferred_subpasses {
+        hala_gfx::HalaGraphicsPipeline::with_renderpass_format_and_size(
+          Rc::clone(&context.logical_device),
+          &[context.swapchain.desc.format],
+          Some(context.swapchain.depth_stencil_format),
+          self.info.width,
+          self.info.height,
+          &[
+            &self.static_descriptor_set.layout,
+            &dynamic_descriptor_set.layout,
+            &descriptor_set.layout,
+          ],
+          hala_gfx::HalaPipelineCreateFlags::default(),
+          &[] as &[hala_gfx::HalaVertexInputAttributeDescription],
+          &[] as &[hala_gfx::HalaVertexInputBindingDescription],
+          &[] as &[hala_gfx::HalaPushConstantRange],
+          hala_gfx::HalaPrimitiveTopology::TRIANGLE_STRIP,
+          &[
+            hala_gfx::HalaBlendState::new(hala_gfx::HalaBlendFactor::ONE, hala_gfx::HalaBlendFactor::ZERO, hala_gfx::HalaBlendOp::ADD),
+          ],
+          &[
+            hala_gfx::HalaBlendState::new(hala_gfx::HalaBlendFactor::ONE, hala_gfx::HalaBlendFactor::ZERO, hala_gfx::HalaBlendOp::ADD),
+          ],
+          &hala_gfx::HalaRasterizerState::new(hala_gfx::HalaFrontFace::COUNTER_CLOCKWISE, hala_gfx::HalaCullModeFlags::NONE, hala_gfx::HalaPolygonMode::FILL, 1.0),
+          &hala_gfx::HalaDepthState::new(false, false, hala_gfx::HalaCompareOp::GREATER), // We use reverse Z, so greater is less.
+          None,
+          &[&vertex_shader, &fragment_shader],
+          &[hala_gfx::HalaDynamicState::VIEWPORT],
+          Some(deferred_render_pass),
+          1,
+          Some(&pipeline_cache),
+          "lighting_subpass.graphics_pipeline",
+        )?
+      } else {
+        hala_gfx::HalaGraphicsPipeline::new(
+          Rc::clone(&context.logical_device),
+          &context.swapchain,
+          &[
+            &self.static_descriptor_set.layout,
+            &dynamic_descriptor_set.layout,
+            &descriptor_set.layout,
+          ],
+          hala_gfx::HalaPipelineCreateFlags::default(),
+          &[] as &[hala_gfx::HalaVertexInputAttributeDescription],
+          &[] as &[hala_gfx::HalaVertexInputBindingDescription],
+          &[] as &[hala_gfx::HalaPushConstantRange],
+          hala_gfx::HalaPrimitiveTopology::TRIANGLE_STRIP,
+          &hala_gfx::HalaBlendState::new(hala_gfx::HalaBlendFactor::ONE, hala_gfx::HalaBlendFactor::ZERO, hala_gfx::HalaBlendOp::ADD),
+          &hala_gfx::HalaBlendState::new(hala_gfx::HalaBlendFactor::ONE, hala_gfx::HalaBlendFactor::ZERO, hala_gfx::HalaBlendOp::ADD),
+          &hala_gfx::HalaRasterizerState::new(hala_gfx::HalaFrontFace::COUNTER_CLOCKWISE, hala_gfx::HalaCullModeFlags::NONE, hala_gfx::HalaPolygonMode::FILL, 1.0),
+          &hala_gfx::HalaDepthState::new(false, false, hala_gfx::HalaCompareOp::GREATER), // We use reverse Z, so greater is less.
+          None,
+          &[&vertex_shader, &fragment_shader],
+          &[hala_gfx::HalaDynamicState::VIEWPORT],
+          Some(&pipeline_cache),
+          "lighting_pass.graphics_pipeline",
+        )?
+      };
 
       self.lighting_graphics_pipeline = Some(lighting_graphics_pipeline);
     }
@@ -759,7 +838,7 @@ impl HalaRenderer {
       albedo_image: None,
       normal_image: None,
 
-      use_subpasses: false,
+      use_deferred_subpasses: false,
       deferred_render_pass: None,
       deferred_framebuffers: None,
 
@@ -930,7 +1009,7 @@ impl HalaRenderer {
     let albedo_image = self.albedo_image.as_ref().ok_or(HalaRendererError::new("The albedo image is none!", None))?;
     let normal_image = self.normal_image.as_ref().ok_or(HalaRendererError::new("The normal image is none!", None))?;
 
-    if self.use_subpasses {
+    if self.use_deferred_subpasses {
       let render_pass = self.deferred_render_pass.as_ref().ok_or(HalaRendererError::new("The deferred render pass is none!", None))?;
       let frame_buffers = self.deferred_framebuffers.as_ref().ok_or(HalaRendererError::new("The deferred frame buffers is none!", None))?;
       command_buffers.begin_render_pass(
@@ -1001,7 +1080,7 @@ impl HalaRenderer {
 
     self.draw_scene(index, command_buffers, false)?;
 
-    if self.use_subpasses {
+    if self.use_deferred_subpasses {
       command_buffers.next_subpass(index, hala_gfx::HalaSubpassContents::INLINE);
     } else {
       command_buffers.end_rendering(index);
@@ -1052,7 +1131,7 @@ impl HalaRenderer {
       command_buffers.begin_debug_label(index, "Lighting", [0.0, 1.0, 0.0, 1.0]);
     }
 
-    if self.use_subpasses {
+    if self.use_deferred_subpasses {
       // No need to setup swapchain barrier.
     } else {
       // Setup swapchain barrier.
@@ -1130,19 +1209,71 @@ impl HalaRenderer {
     // Draw.
     command_buffers.draw(index, 4, 1, 0, 0);
 
-    // Draw UI.
-    if cfg!(debug_assertions) {
-      command_buffers.end_debug_label(index);
-      command_buffers.begin_debug_label(index, "Draw UI", [0.0, 0.0, 1.0, 1.0]);
-    }
-    ui_fn(index, command_buffers)?;
-    if cfg!(debug_assertions) {
-      command_buffers.end_debug_label(index);
-    }
-
-    if self.use_subpasses {
+    if self.use_deferred_subpasses {
       command_buffers.end_render_pass(index);
+
+      command_buffers.begin_rendering(
+        index,
+        &context.swapchain,
+        (0, 0, self.info.width, self.info.height),
+        None,
+        None,
+        None,
+      );
+
+      command_buffers.set_viewport(
+        index,
+        0,
+        &[
+          (
+            0.,
+            self.info.height as f32,
+            self.info.width as f32,
+            -(self.info.height as f32), // For vulkan y is down.
+            0.,
+            1.
+          ),
+        ],
+      );
+
+      // Draw UI.
+      if cfg!(debug_assertions) {
+        command_buffers.end_debug_label(index);
+        command_buffers.begin_debug_label(index, "Draw UI", [0.0, 0.0, 1.0, 1.0]);
+      }
+      ui_fn(index, command_buffers)?;
+      if cfg!(debug_assertions) {
+        command_buffers.end_debug_label(index);
+      }
+
+      command_buffers.end_rendering(index);
+
+      // // Setup swapchain barrier.
+      // command_buffers.set_image_barriers(
+      //   index,
+      //   &[hala_gfx::HalaImageBarrierInfo {
+      //     old_layout: hala_gfx::HalaImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+      //     new_layout: hala_gfx::HalaImageLayout::PRESENT_SRC,
+      //     src_access_mask: hala_gfx::HalaAccessFlags2::COLOR_ATTACHMENT_WRITE,
+      //     dst_access_mask: hala_gfx::HalaAccessFlags2::NONE,
+      //     src_stage_mask: hala_gfx::HalaPipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT,
+      //     dst_stage_mask: hala_gfx::HalaPipelineStageFlags2::BOTTOM_OF_PIPE,
+      //     aspect_mask: hala_gfx::HalaImageAspectFlags::COLOR,
+      //     image: context.swapchain.images[index],
+      //     ..Default::default()
+      //   }],
+      // );
     } else {
+      // Draw UI.
+      if cfg!(debug_assertions) {
+        command_buffers.end_debug_label(index);
+        command_buffers.begin_debug_label(index, "Draw UI", [0.0, 0.0, 1.0, 1.0]);
+      }
+      ui_fn(index, command_buffers)?;
+      if cfg!(debug_assertions) {
+        command_buffers.end_debug_label(index);
+      }
+
       command_buffers.end_rendering(index);
 
       // Setup swapchain barrier.
@@ -1440,6 +1571,25 @@ impl HalaRenderer {
       "deferred.render_pass",
     )?;
 
+    self.use_deferred_subpasses = true;
+    self.deferred_render_pass = Some(deferred_render_pass);
+
+    Ok(())
+  }
+
+  /// Destroy deferred render pass.
+  pub fn destroy_deferred_render_pass(&mut self) {
+    self.use_deferred_subpasses = false;
+    self.deferred_render_pass = None;
+  }
+
+  /// Create deferred framebuffers.
+  pub fn create_deferred_framebuffers(&mut self) -> Result<(), HalaRendererError> {
+    let context = self.resources.context.borrow();
+    let depth_image = self.depth_image.as_ref().ok_or(HalaRendererError::new("The depth image is none!", None))?;
+    let albedo_image = self.albedo_image.as_ref().ok_or(HalaRendererError::new("The albedo image is none!", None))?;
+    let normal_image = self.normal_image.as_ref().ok_or(HalaRendererError::new("The normal image is none!", None))?;
+
     let mut attachments_list = Vec::with_capacity(context.swapchain.num_of_images);
     for swapchain_image_view in context.swapchain.image_views.iter() {
       attachments_list.push([
@@ -1452,23 +1602,19 @@ impl HalaRenderer {
     }
     let deferred_framebuffers = hala_gfx::HalaFrameBufferSet::new(
       Rc::clone(&context.logical_device),
-      &deferred_render_pass,
+      self.deferred_render_pass.as_ref().ok_or(HalaRendererError::new("The deferred render pass is none!", None))?,
       attachments_list.iter().map(|attachments| attachments.as_ref()).collect::<Vec<_>>().as_slice(),
       context.swapchain.desc.dims,
       "deferred",
     )?;
 
-    self.use_subpasses = true;
-    self.deferred_render_pass = Some(deferred_render_pass);
     self.deferred_framebuffers = Some(deferred_framebuffers);
 
     Ok(())
   }
 
-  /// Destroy deferred render pass.
-  pub fn destroy_deferred_render_pass(&mut self) {
-    self.use_subpasses = false;
-    self.deferred_render_pass = None;
+  /// Destroy deferred framebuffers.
+  pub fn destroy_deferred_framebuffers(&mut self) {
     self.deferred_framebuffers = None;
   }
 
