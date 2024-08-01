@@ -62,6 +62,7 @@ pub struct HalaRenderer {
   pub(crate) albedo_image: Option<hala_gfx::HalaImage>,
   pub(crate) normal_image: Option<hala_gfx::HalaImage>,
 
+  pub(crate) use_subpasses: bool,
   pub(crate) deferred_render_pass: Option<hala_gfx::HalaRenderPass>,
   pub(crate) deferred_frame_buffers: Option<hala_gfx::HalaFrameBufferSet>,
 
@@ -109,7 +110,6 @@ impl Drop for HalaRenderer {
     self.shaders.clear();
     self.compute_shaders.clear();
 
-    self.use_deferred = false;
     self.depth_image = None;
     self.albedo_image = None;
     self.normal_image = None;
@@ -759,6 +759,7 @@ impl HalaRenderer {
       albedo_image: None,
       normal_image: None,
 
+      use_subpasses: false,
       deferred_render_pass: None,
       deferred_frame_buffers: None,
 
@@ -1268,6 +1269,17 @@ impl HalaRenderer {
     Ok(())
   }
 
+  /// Destroy G-buffer images.
+  pub fn destroy_gbuffer_images(&mut self) {
+    self.use_deferred = false;
+    self.depth_image = None;
+    self.albedo_image = None;
+    self.normal_image = None;
+    self.lighting_descriptor_set = None;
+    self.lighting_vertex_shader = None;
+    self.lighting_fragment_shader = None;
+  }
+
   /// Create deferred render pass with subpasses.
   /// return: The result.
   pub fn create_deferred_render_pass(&mut self) -> Result<(), HalaRendererError> {
@@ -1414,10 +1426,18 @@ impl HalaRenderer {
       "deferred",
     )?;
 
+    self.use_subpasses = true;
     self.deferred_render_pass = Some(deferred_render_pass);
     self.deferred_frame_buffers = Some(deferred_frame_buffers);
 
     Ok(())
+  }
+
+  /// Destroy deferred render pass.
+  pub fn destroy_deferred_render_pass(&mut self) {
+    self.use_subpasses = false;
+    self.deferred_render_pass = None;
+    self.deferred_frame_buffers = None;
   }
 
   /// Push traditional shaders to the renderer.
