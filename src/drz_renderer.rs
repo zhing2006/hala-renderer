@@ -62,6 +62,8 @@ pub struct HalaRenderer {
   pub(crate) albedo_image: Option<hala_gfx::HalaImage>,
   pub(crate) normal_image: Option<hala_gfx::HalaImage>,
 
+  pub(crate) deferred_render_pass: Option<hala_gfx::HalaRenderPass>,
+
   pub(crate) lighting_descriptor_set: Option<hala_gfx::HalaDescriptorSet>,
   pub(crate) lighting_vertex_shader: Option<hala_gfx::HalaShader>,
   pub(crate) lighting_fragment_shader: Option<hala_gfx::HalaShader>,
@@ -114,6 +116,7 @@ impl Drop for HalaRenderer {
     self.lighting_vertex_shader = None;
     self.lighting_fragment_shader = None;
     self.lighting_graphics_pipeline = None;
+    self.deferred_render_pass = None;
 
     self.object_uniform_buffers.clear();
     self.dynamic_descriptor_set = None;
@@ -755,6 +758,8 @@ impl HalaRenderer {
       albedo_image: None,
       normal_image: None,
 
+      deferred_render_pass: None,
+
       lighting_descriptor_set: None,
       lighting_vertex_shader: None,
       lighting_fragment_shader: None,
@@ -1257,6 +1262,60 @@ impl HalaRenderer {
     self.lighting_descriptor_set = Some(lighting_descriptor_set);
     self.lighting_vertex_shader = Some(vertex_shader);
     self.lighting_fragment_shader = Some(fragment_shader);
+
+    Ok(())
+  }
+
+  /// Create deferred render pass with subpasses.
+  /// return: The result.
+  pub fn create_deferred_render_pass(&mut self) -> Result<(), HalaRendererError> {
+    let context = self.resources.context.borrow();
+    let depth_image = self.depth_image.as_ref().ok_or(HalaRendererError::new("The depth image is none!", None))?;
+    let albedo_image = self.albedo_image.as_ref().ok_or(HalaRendererError::new("The albedo image is none!", None))?;
+    let normal_image = self.normal_image.as_ref().ok_or(HalaRendererError::new("The normal image is none!", None))?;
+
+    let subpasses = vec![
+      hala_gfx::HalaSubpassDescription {
+        pipeline_bind_point: hala_gfx::HalaPipelineBindPoint::GRAPHICS,
+        input_attachment_layouts: vec![],
+        color_attachment_layouts: vec![
+          hala_gfx::HalaImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+          hala_gfx::HalaImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+        ],
+        resolve_attachment_layouts: vec![],
+        depth_stencil_attachment_layout: Some(hala_gfx::HalaImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL),
+        preserve_attachments: vec![],
+      },
+    ];
+
+    let subpass_deps = vec![
+      hala_gfx::HalaSubpassDependency {
+        src_subpass: hala_gfx::SUBPASS_EXTERNAL,
+        dst_subpass: 0,
+        src_stage_mask: hala_gfx::HalaPipelineStageFlags::BOTTOM_OF_PIPE,
+        dst_stage_mask: hala_gfx::HalaPipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
+        src_access_mask: hala_gfx::HalaAccessFlags::MEMORY_READ,
+        dst_access_mask: hala_gfx::HalaAccessFlags::COLOR_ATTACHMENT_WRITE,
+        dependency_flags: hala_gfx::HalaDependencyFlags::BY_REGION,
+      }
+    ];
+
+    let deferred_render_pass = hala_gfx::HalaRenderPass::with_subpasses(
+      Rc::clone(&context.logical_device),
+      &[albedo_image.format, normal_image.format],
+      &[hala_gfx::HalaAttachmentLoadOp::CLEAR, hala_gfx::HalaAttachmentLoadOp::CLEAR],
+      &[hala_gfx::HalaAttachmentStoreOp::STORE, hala_gfx::HalaAttachmentStoreOp::STORE],
+      Some(depth_image.format),
+      Some(hala_gfx::HalaAttachmentLoadOp::CLEAR),
+      Some(hala_gfx::HalaAttachmentStoreOp::STORE),
+      None,
+      None,
+      &subpasses,
+      &subpass_deps,
+      "deferred.render_pass",
+    )?;
+
+    self.deferred_render_pass = Some(deferred_render_pass);
 
     Ok(())
   }
