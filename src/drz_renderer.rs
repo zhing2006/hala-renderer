@@ -64,7 +64,7 @@ pub struct HalaRenderer {
 
   pub(crate) use_subpasses: bool,
   pub(crate) deferred_render_pass: Option<hala_gfx::HalaRenderPass>,
-  pub(crate) deferred_frame_buffers: Option<hala_gfx::HalaFrameBufferSet>,
+  pub(crate) deferred_framebuffers: Option<hala_gfx::HalaFrameBufferSet>,
 
   pub(crate) lighting_descriptor_set: Option<hala_gfx::HalaDescriptorSet>,
   pub(crate) lighting_vertex_shader: Option<hala_gfx::HalaShader>,
@@ -761,7 +761,7 @@ impl HalaRenderer {
 
       use_subpasses: false,
       deferred_render_pass: None,
-      deferred_frame_buffers: None,
+      deferred_framebuffers: None,
 
       lighting_descriptor_set: None,
       lighting_vertex_shader: None,
@@ -930,140 +930,167 @@ impl HalaRenderer {
     let albedo_image = self.albedo_image.as_ref().ok_or(HalaRendererError::new("The albedo image is none!", None))?;
     let normal_image = self.normal_image.as_ref().ok_or(HalaRendererError::new("The normal image is none!", None))?;
 
-    // Setup deferred G-buffer write barriers.
-    command_buffers.set_image_barriers(
-      index,
-      &[
-        hala_gfx::HalaImageBarrierInfo {
-          old_layout: hala_gfx::HalaImageLayout::UNDEFINED,
-          new_layout: hala_gfx::HalaImageLayout::COLOR_ATTACHMENT_OPTIMAL,
-          src_access_mask: hala_gfx::HalaAccessFlags2::NONE,
-          dst_access_mask: hala_gfx::HalaAccessFlags2::COLOR_ATTACHMENT_WRITE,
-          src_stage_mask: hala_gfx::HalaPipelineStageFlags2::TOP_OF_PIPE,
-          dst_stage_mask: hala_gfx::HalaPipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT,
-          aspect_mask: hala_gfx::HalaImageAspectFlags::COLOR,
-          image: albedo_image.raw,
-          ..Default::default()
-        },
-        hala_gfx::HalaImageBarrierInfo {
-          old_layout: hala_gfx::HalaImageLayout::UNDEFINED,
-          new_layout: hala_gfx::HalaImageLayout::COLOR_ATTACHMENT_OPTIMAL,
-          src_access_mask: hala_gfx::HalaAccessFlags2::NONE,
-          dst_access_mask: hala_gfx::HalaAccessFlags2::COLOR_ATTACHMENT_WRITE,
-          src_stage_mask: hala_gfx::HalaPipelineStageFlags2::TOP_OF_PIPE,
-          dst_stage_mask: hala_gfx::HalaPipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT,
-          aspect_mask: hala_gfx::HalaImageAspectFlags::COLOR,
-          image: normal_image.raw,
-          ..Default::default()
-        },
-        hala_gfx::HalaImageBarrierInfo {
-          old_layout: hala_gfx::HalaImageLayout::UNDEFINED,
-          new_layout: hala_gfx::HalaImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
-          src_access_mask: hala_gfx::HalaAccessFlags2::NONE,
-          dst_access_mask: hala_gfx::HalaAccessFlags2::DEPTH_STENCIL_ATTACHMENT_WRITE,
-          src_stage_mask: hala_gfx::HalaPipelineStageFlags2::TOP_OF_PIPE,
-          dst_stage_mask: hala_gfx::HalaPipelineStageFlags2::EARLY_FRAGMENT_TESTS | hala_gfx::HalaPipelineStageFlags2::LATE_FRAGMENT_TESTS,
-          aspect_mask: hala_gfx::HalaImageAspectFlags::DEPTH,
-          image: depth_image.raw,
-          ..Default::default()
-        },
-      ],
-    );
+    if self.use_subpasses {
+      let render_pass = self.deferred_render_pass.as_ref().ok_or(HalaRendererError::new("The deferred render pass is none!", None))?;
+      let frame_buffers = self.deferred_framebuffers.as_ref().ok_or(HalaRendererError::new("The deferred frame buffers is none!", None))?;
+      command_buffers.begin_render_pass(
+        index,
+        render_pass,
+        frame_buffers,
+        (0, 0, self.info.width, self.info.height),
+        &[
+          hala_gfx::HalaClearValue { color: hala_gfx::HalaClearColorValue { float32: [0.0, 0.0, 0.0, 1.0] }, },
+          hala_gfx::HalaClearValue { color: hala_gfx::HalaClearColorValue { float32: [0.0, 0.0, 0.0, 1.0] }, },
+          hala_gfx::HalaClearValue { color: hala_gfx::HalaClearColorValue { float32: [0.0, 0.0, 0.0, 1.0] }, },
+          hala_gfx::HalaClearValue { depth_stencil: hala_gfx::HalaClearDepthStencilValue { depth: 0.0, stencil: 0 }, },
+          hala_gfx::HalaClearValue { depth_stencil: hala_gfx::HalaClearDepthStencilValue { depth: 0.0, stencil: 0 }, },
+        ],
+        hala_gfx::HalaSubpassContents::INLINE,
+      );
+    } else {
+      // Setup deferred G-buffer write barriers.
+      command_buffers.set_image_barriers(
+        index,
+        &[
+          hala_gfx::HalaImageBarrierInfo {
+            old_layout: hala_gfx::HalaImageLayout::UNDEFINED,
+            new_layout: hala_gfx::HalaImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+            src_access_mask: hala_gfx::HalaAccessFlags2::NONE,
+            dst_access_mask: hala_gfx::HalaAccessFlags2::COLOR_ATTACHMENT_WRITE,
+            src_stage_mask: hala_gfx::HalaPipelineStageFlags2::TOP_OF_PIPE,
+            dst_stage_mask: hala_gfx::HalaPipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT,
+            aspect_mask: hala_gfx::HalaImageAspectFlags::COLOR,
+            image: albedo_image.raw,
+            ..Default::default()
+          },
+          hala_gfx::HalaImageBarrierInfo {
+            old_layout: hala_gfx::HalaImageLayout::UNDEFINED,
+            new_layout: hala_gfx::HalaImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+            src_access_mask: hala_gfx::HalaAccessFlags2::NONE,
+            dst_access_mask: hala_gfx::HalaAccessFlags2::COLOR_ATTACHMENT_WRITE,
+            src_stage_mask: hala_gfx::HalaPipelineStageFlags2::TOP_OF_PIPE,
+            dst_stage_mask: hala_gfx::HalaPipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT,
+            aspect_mask: hala_gfx::HalaImageAspectFlags::COLOR,
+            image: normal_image.raw,
+            ..Default::default()
+          },
+          hala_gfx::HalaImageBarrierInfo {
+            old_layout: hala_gfx::HalaImageLayout::UNDEFINED,
+            new_layout: hala_gfx::HalaImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+            src_access_mask: hala_gfx::HalaAccessFlags2::NONE,
+            dst_access_mask: hala_gfx::HalaAccessFlags2::DEPTH_STENCIL_ATTACHMENT_WRITE,
+            src_stage_mask: hala_gfx::HalaPipelineStageFlags2::TOP_OF_PIPE,
+            dst_stage_mask: hala_gfx::HalaPipelineStageFlags2::EARLY_FRAGMENT_TESTS | hala_gfx::HalaPipelineStageFlags2::LATE_FRAGMENT_TESTS,
+            aspect_mask: hala_gfx::HalaImageAspectFlags::DEPTH,
+            image: depth_image.raw,
+            ..Default::default()
+          },
+        ],
+      );
 
-    command_buffers.begin_rendering_with_rt(
-      index,
-      &[albedo_image, normal_image],
-      Some(depth_image),
-      (0, 0, self.info.width, self.info.height),
-      &[Some([0.0, 0.0, 0.0, 1.0]), Some([0.0, 0.0, 0.0, 1.0])],
-      Some(0.0),
-      None,
-    );
+      command_buffers.begin_rendering_with_rt(
+        index,
+        &[albedo_image, normal_image],
+        Some(depth_image),
+        (0, 0, self.info.width, self.info.height),
+        &[Some([0.0, 0.0, 0.0, 1.0]), Some([0.0, 0.0, 0.0, 1.0])],
+        Some(0.0),
+        None,
+      );
+    }
 
     self.draw_scene(index, command_buffers, false)?;
 
-    command_buffers.end_rendering(index);
+    if self.use_subpasses {
+      command_buffers.next_subpass(index, hala_gfx::HalaSubpassContents::INLINE);
+    } else {
+      command_buffers.end_rendering(index);
 
-    // Setup deferred G-buffer read barriers.
-    command_buffers.set_image_barriers(
-      index,
-      &[
-        hala_gfx::HalaImageBarrierInfo {
-          old_layout: hala_gfx::HalaImageLayout::COLOR_ATTACHMENT_OPTIMAL,
-          new_layout: hala_gfx::HalaImageLayout::SHADER_READ_ONLY_OPTIMAL,
-          src_access_mask: hala_gfx::HalaAccessFlags2::COLOR_ATTACHMENT_WRITE,
-          dst_access_mask: hala_gfx::HalaAccessFlags2::INPUT_ATTACHMENT_READ,
-          src_stage_mask: hala_gfx::HalaPipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT,
-          dst_stage_mask: hala_gfx::HalaPipelineStageFlags2::FRAGMENT_SHADER,
-          aspect_mask: hala_gfx::HalaImageAspectFlags::COLOR,
-          image: albedo_image.raw,
-          ..Default::default()
-        },
-        hala_gfx::HalaImageBarrierInfo {
-          old_layout: hala_gfx::HalaImageLayout::COLOR_ATTACHMENT_OPTIMAL,
-          new_layout: hala_gfx::HalaImageLayout::SHADER_READ_ONLY_OPTIMAL,
-          src_access_mask: hala_gfx::HalaAccessFlags2::COLOR_ATTACHMENT_WRITE,
-          dst_access_mask: hala_gfx::HalaAccessFlags2::INPUT_ATTACHMENT_READ,
-          src_stage_mask: hala_gfx::HalaPipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT,
-          dst_stage_mask: hala_gfx::HalaPipelineStageFlags2::FRAGMENT_SHADER,
-          aspect_mask: hala_gfx::HalaImageAspectFlags::COLOR,
-          image: normal_image.raw,
-          ..Default::default()
-        },
-        hala_gfx::HalaImageBarrierInfo {
-          old_layout: hala_gfx::HalaImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
-          new_layout: hala_gfx::HalaImageLayout::DEPTH_STENCIL_READ_ONLY_OPTIMAL,
-          src_access_mask: hala_gfx::HalaAccessFlags2::DEPTH_STENCIL_ATTACHMENT_WRITE,
-          dst_access_mask: hala_gfx::HalaAccessFlags2::INPUT_ATTACHMENT_READ,
-          src_stage_mask: hala_gfx::HalaPipelineStageFlags2::EARLY_FRAGMENT_TESTS | hala_gfx::HalaPipelineStageFlags2::LATE_FRAGMENT_TESTS,
-          dst_stage_mask: hala_gfx::HalaPipelineStageFlags2::FRAGMENT_SHADER,
-          aspect_mask: hala_gfx::HalaImageAspectFlags::DEPTH,
-          image: depth_image.raw,
-          ..Default::default()
-        },
-      ],
-    );
+      // Setup deferred G-buffer read barriers.
+      command_buffers.set_image_barriers(
+        index,
+        &[
+          hala_gfx::HalaImageBarrierInfo {
+            old_layout: hala_gfx::HalaImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+            new_layout: hala_gfx::HalaImageLayout::SHADER_READ_ONLY_OPTIMAL,
+            src_access_mask: hala_gfx::HalaAccessFlags2::COLOR_ATTACHMENT_WRITE,
+            dst_access_mask: hala_gfx::HalaAccessFlags2::INPUT_ATTACHMENT_READ,
+            src_stage_mask: hala_gfx::HalaPipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT,
+            dst_stage_mask: hala_gfx::HalaPipelineStageFlags2::FRAGMENT_SHADER,
+            aspect_mask: hala_gfx::HalaImageAspectFlags::COLOR,
+            image: albedo_image.raw,
+            ..Default::default()
+          },
+          hala_gfx::HalaImageBarrierInfo {
+            old_layout: hala_gfx::HalaImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+            new_layout: hala_gfx::HalaImageLayout::SHADER_READ_ONLY_OPTIMAL,
+            src_access_mask: hala_gfx::HalaAccessFlags2::COLOR_ATTACHMENT_WRITE,
+            dst_access_mask: hala_gfx::HalaAccessFlags2::INPUT_ATTACHMENT_READ,
+            src_stage_mask: hala_gfx::HalaPipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT,
+            dst_stage_mask: hala_gfx::HalaPipelineStageFlags2::FRAGMENT_SHADER,
+            aspect_mask: hala_gfx::HalaImageAspectFlags::COLOR,
+            image: normal_image.raw,
+            ..Default::default()
+          },
+          hala_gfx::HalaImageBarrierInfo {
+            old_layout: hala_gfx::HalaImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+            new_layout: hala_gfx::HalaImageLayout::DEPTH_STENCIL_READ_ONLY_OPTIMAL,
+            src_access_mask: hala_gfx::HalaAccessFlags2::DEPTH_STENCIL_ATTACHMENT_WRITE,
+            dst_access_mask: hala_gfx::HalaAccessFlags2::INPUT_ATTACHMENT_READ,
+            src_stage_mask: hala_gfx::HalaPipelineStageFlags2::EARLY_FRAGMENT_TESTS | hala_gfx::HalaPipelineStageFlags2::LATE_FRAGMENT_TESTS,
+            dst_stage_mask: hala_gfx::HalaPipelineStageFlags2::FRAGMENT_SHADER,
+            aspect_mask: hala_gfx::HalaImageAspectFlags::DEPTH,
+            image: depth_image.raw,
+            ..Default::default()
+          },
+        ],
+      );
+    }
 
     if cfg!(debug_assertions) {
       command_buffers.end_debug_label(index);
       command_buffers.begin_debug_label(index, "Lighting", [0.0, 1.0, 0.0, 1.0]);
     }
 
-    // Setup swapchain barrier.
-    command_buffers.set_swapchain_image_barrier(
-      index,
-      &context.swapchain,
-      &hala_gfx::HalaImageBarrierInfo {
-        old_layout: hala_gfx::HalaImageLayout::UNDEFINED,
-        new_layout: hala_gfx::HalaImageLayout::COLOR_ATTACHMENT_OPTIMAL,
-        src_access_mask: hala_gfx::HalaAccessFlags2::NONE,
-        dst_access_mask: hala_gfx::HalaAccessFlags2::COLOR_ATTACHMENT_WRITE,
-        src_stage_mask: hala_gfx::HalaPipelineStageFlags2::TOP_OF_PIPE,
-        dst_stage_mask: hala_gfx::HalaPipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT,
-        aspect_mask: hala_gfx::HalaImageAspectFlags::COLOR,
-        ..Default::default()
-      },
-      &hala_gfx::HalaImageBarrierInfo {
-        old_layout: hala_gfx::HalaImageLayout::UNDEFINED,
-        new_layout: hala_gfx::HalaImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
-        src_access_mask: hala_gfx::HalaAccessFlags2::NONE,
-        dst_access_mask: hala_gfx::HalaAccessFlags2::DEPTH_STENCIL_ATTACHMENT_WRITE,
-        src_stage_mask: hala_gfx::HalaPipelineStageFlags2::EARLY_FRAGMENT_TESTS | hala_gfx::HalaPipelineStageFlags2::LATE_FRAGMENT_TESTS,
-        dst_stage_mask: hala_gfx::HalaPipelineStageFlags2::EARLY_FRAGMENT_TESTS | hala_gfx::HalaPipelineStageFlags2::LATE_FRAGMENT_TESTS,
-        aspect_mask: hala_gfx::HalaImageAspectFlags::DEPTH | if context.swapchain.has_stencil { hala_gfx::HalaImageAspectFlags::STENCIL } else { hala_gfx::HalaImageAspectFlags::empty() },
-        ..Default::default()
-      }
-    );
+    if self.use_subpasses {
+      // No need to setup swapchain barrier.
+    } else {
+      // Setup swapchain barrier.
+      command_buffers.set_swapchain_image_barrier(
+        index,
+        &context.swapchain,
+        &hala_gfx::HalaImageBarrierInfo {
+          old_layout: hala_gfx::HalaImageLayout::UNDEFINED,
+          new_layout: hala_gfx::HalaImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+          src_access_mask: hala_gfx::HalaAccessFlags2::NONE,
+          dst_access_mask: hala_gfx::HalaAccessFlags2::COLOR_ATTACHMENT_WRITE,
+          src_stage_mask: hala_gfx::HalaPipelineStageFlags2::TOP_OF_PIPE,
+          dst_stage_mask: hala_gfx::HalaPipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT,
+          aspect_mask: hala_gfx::HalaImageAspectFlags::COLOR,
+          ..Default::default()
+        },
+        &hala_gfx::HalaImageBarrierInfo {
+          old_layout: hala_gfx::HalaImageLayout::UNDEFINED,
+          new_layout: hala_gfx::HalaImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+          src_access_mask: hala_gfx::HalaAccessFlags2::NONE,
+          dst_access_mask: hala_gfx::HalaAccessFlags2::DEPTH_STENCIL_ATTACHMENT_WRITE,
+          src_stage_mask: hala_gfx::HalaPipelineStageFlags2::EARLY_FRAGMENT_TESTS | hala_gfx::HalaPipelineStageFlags2::LATE_FRAGMENT_TESTS,
+          dst_stage_mask: hala_gfx::HalaPipelineStageFlags2::EARLY_FRAGMENT_TESTS | hala_gfx::HalaPipelineStageFlags2::LATE_FRAGMENT_TESTS,
+          aspect_mask: hala_gfx::HalaImageAspectFlags::DEPTH | if context.swapchain.has_stencil { hala_gfx::HalaImageAspectFlags::STENCIL } else { hala_gfx::HalaImageAspectFlags::empty() },
+          ..Default::default()
+        }
+      );
 
-    // Rendering.
-    command_buffers.begin_rendering(
-      index,
-      &context.swapchain,
-      (0, 0, self.info.width, self.info.height),
-      Some([1.0, 0.0, 0.0, 1.0]),
-      None,
-      Some(0),
-    );
+      // Rendering.
+      command_buffers.begin_rendering(
+        index,
+        &context.swapchain,
+        (0, 0, self.info.width, self.info.height),
+        Some([1.0, 0.0, 0.0, 1.0]),
+        None,
+        Some(0),
+      );
+    }
 
     // Setup viewport.
     command_buffers.set_viewport(
@@ -1113,23 +1140,28 @@ impl HalaRenderer {
       command_buffers.end_debug_label(index);
     }
 
-    command_buffers.end_rendering(index);
+    if self.use_subpasses {
+      command_buffers.end_render_pass(index);
+    } else {
+      command_buffers.end_rendering(index);
 
-    // Setup swapchain barrier.
-    command_buffers.set_image_barriers(
-      index,
-      &[hala_gfx::HalaImageBarrierInfo {
-        old_layout: hala_gfx::HalaImageLayout::COLOR_ATTACHMENT_OPTIMAL,
-        new_layout: hala_gfx::HalaImageLayout::PRESENT_SRC,
-        src_access_mask: hala_gfx::HalaAccessFlags2::COLOR_ATTACHMENT_WRITE,
-        dst_access_mask: hala_gfx::HalaAccessFlags2::NONE,
-        src_stage_mask: hala_gfx::HalaPipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT,
-        dst_stage_mask: hala_gfx::HalaPipelineStageFlags2::BOTTOM_OF_PIPE,
-        aspect_mask: hala_gfx::HalaImageAspectFlags::COLOR,
-        image: context.swapchain.images[index],
-        ..Default::default()
-      }],
-    );
+      // Setup swapchain barrier.
+      command_buffers.set_image_barriers(
+        index,
+        &[hala_gfx::HalaImageBarrierInfo {
+          old_layout: hala_gfx::HalaImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+          new_layout: hala_gfx::HalaImageLayout::PRESENT_SRC,
+          src_access_mask: hala_gfx::HalaAccessFlags2::COLOR_ATTACHMENT_WRITE,
+          dst_access_mask: hala_gfx::HalaAccessFlags2::NONE,
+          src_stage_mask: hala_gfx::HalaPipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT,
+          dst_stage_mask: hala_gfx::HalaPipelineStageFlags2::BOTTOM_OF_PIPE,
+          aspect_mask: hala_gfx::HalaImageAspectFlags::COLOR,
+          image: context.swapchain.images[index],
+          ..Default::default()
+        }],
+      );
+    }
+
     if cfg!(debug_assertions) {
       command_buffers.end_debug_label(index);
     }
@@ -1418,7 +1450,7 @@ impl HalaRenderer {
         depth_image.view,
       ]);
     }
-    let deferred_frame_buffers = hala_gfx::HalaFrameBufferSet::new(
+    let deferred_framebuffers = hala_gfx::HalaFrameBufferSet::new(
       Rc::clone(&context.logical_device),
       &deferred_render_pass,
       attachments_list.iter().map(|attachments| attachments.as_ref()).collect::<Vec<_>>().as_slice(),
@@ -1428,7 +1460,7 @@ impl HalaRenderer {
 
     self.use_subpasses = true;
     self.deferred_render_pass = Some(deferred_render_pass);
-    self.deferred_frame_buffers = Some(deferred_frame_buffers);
+    self.deferred_framebuffers = Some(deferred_framebuffers);
 
     Ok(())
   }
@@ -1437,7 +1469,7 @@ impl HalaRenderer {
   pub fn destroy_deferred_render_pass(&mut self) {
     self.use_subpasses = false;
     self.deferred_render_pass = None;
-    self.deferred_frame_buffers = None;
+    self.deferred_framebuffers = None;
   }
 
   /// Push traditional shaders to the renderer.
