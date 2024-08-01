@@ -63,6 +63,7 @@ pub struct HalaRenderer {
   pub(crate) normal_image: Option<hala_gfx::HalaImage>,
 
   pub(crate) deferred_render_pass: Option<hala_gfx::HalaRenderPass>,
+  pub(crate) deferred_frame_buffers: Option<hala_gfx::HalaFrameBufferSet>,
 
   pub(crate) lighting_descriptor_set: Option<hala_gfx::HalaDescriptorSet>,
   pub(crate) lighting_vertex_shader: Option<hala_gfx::HalaShader>,
@@ -759,6 +760,7 @@ impl HalaRenderer {
       normal_image: None,
 
       deferred_render_pass: None,
+      deferred_frame_buffers: None,
 
       lighting_descriptor_set: None,
       lighting_vertex_shader: None,
@@ -1335,9 +1337,9 @@ impl HalaRenderer {
         src_subpass: hala_gfx::SUBPASS_EXTERNAL,
         dst_subpass: 0,
         src_stage_mask: hala_gfx::HalaPipelineStageFlags::BOTTOM_OF_PIPE,
-        dst_stage_mask: hala_gfx::HalaPipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
+        dst_stage_mask: hala_gfx::HalaPipelineStageFlags::COLOR_ATTACHMENT_OUTPUT | hala_gfx::HalaPipelineStageFlags::EARLY_FRAGMENT_TESTS,
         src_access_mask: hala_gfx::HalaAccessFlags::MEMORY_READ,
-        dst_access_mask: hala_gfx::HalaAccessFlags::COLOR_ATTACHMENT_WRITE,
+        dst_access_mask: hala_gfx::HalaAccessFlags::COLOR_ATTACHMENT_WRITE | hala_gfx::HalaAccessFlags::DEPTH_STENCIL_ATTACHMENT_WRITE,
         dependency_flags: hala_gfx::HalaDependencyFlags::BY_REGION,
       },
       hala_gfx::HalaSubpassDependency {
@@ -1352,9 +1354,9 @@ impl HalaRenderer {
       hala_gfx::HalaSubpassDependency {
         src_subpass: 1,
         dst_subpass: hala_gfx::SUBPASS_EXTERNAL,
-        src_stage_mask: hala_gfx::HalaPipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
+        src_stage_mask: hala_gfx::HalaPipelineStageFlags::COLOR_ATTACHMENT_OUTPUT | hala_gfx::HalaPipelineStageFlags::EARLY_FRAGMENT_TESTS,
         dst_stage_mask: hala_gfx::HalaPipelineStageFlags::BOTTOM_OF_PIPE,
-        src_access_mask: hala_gfx::HalaAccessFlags::COLOR_ATTACHMENT_WRITE,
+        src_access_mask: hala_gfx::HalaAccessFlags::COLOR_ATTACHMENT_WRITE | hala_gfx::HalaAccessFlags::DEPTH_STENCIL_ATTACHMENT_WRITE,
         dst_access_mask: hala_gfx::HalaAccessFlags::NONE,
         dependency_flags: hala_gfx::HalaDependencyFlags::BY_REGION,
       }
@@ -1394,7 +1396,26 @@ impl HalaRenderer {
       "deferred.render_pass",
     )?;
 
+    let mut attachments_list = Vec::with_capacity(context.swapchain.num_of_images);
+    for swapchain_image_view in context.swapchain.image_views.iter() {
+      attachments_list.push([
+        *swapchain_image_view,
+        albedo_image.view,
+        normal_image.view,
+        context.swapchain.depth_stencil_image_view,
+        depth_image.view,
+      ]);
+    }
+    let deferred_frame_buffers = hala_gfx::HalaFrameBufferSet::new(
+      Rc::clone(&context.logical_device),
+      &deferred_render_pass,
+      attachments_list.iter().map(|attachments| attachments.as_ref()).collect::<Vec<_>>().as_slice(),
+      context.swapchain.desc.dims,
+      "deferred",
+    )?;
+
     self.deferred_render_pass = Some(deferred_render_pass);
+    self.deferred_frame_buffers = Some(deferred_frame_buffers);
 
     Ok(())
   }
