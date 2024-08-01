@@ -1277,15 +1277,57 @@ impl HalaRenderer {
     let subpasses = vec![
       hala_gfx::HalaSubpassDescription {
         pipeline_bind_point: hala_gfx::HalaPipelineBindPoint::GRAPHICS,
-        input_attachment_layouts: vec![],
-        color_attachment_layouts: vec![
-          hala_gfx::HalaImageLayout::COLOR_ATTACHMENT_OPTIMAL,
-          hala_gfx::HalaImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+        input_attachments: vec![],
+        color_attachments: vec![
+          hala_gfx::HalaAttachmentReference {
+            attachment: 1,
+            layout: hala_gfx::HalaImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+          },
+          hala_gfx::HalaAttachmentReference {
+            attachment: 2,
+            layout: hala_gfx::HalaImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+          },
         ],
-        resolve_attachment_layouts: vec![],
-        depth_stencil_attachment_layout: Some(hala_gfx::HalaImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL),
+        resolve_attachments: vec![],
+        depth_stencil_attachment: Some(
+          hala_gfx::HalaAttachmentReference {
+            attachment: 4,
+            layout: hala_gfx::HalaImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+          }
+        ),
         preserve_attachments: vec![],
       },
+      hala_gfx::HalaSubpassDescription {
+        pipeline_bind_point: hala_gfx::HalaPipelineBindPoint::GRAPHICS,
+        input_attachments: vec![
+          hala_gfx::HalaAttachmentReference {
+            attachment: 1,
+            layout: hala_gfx::HalaImageLayout::SHADER_READ_ONLY_OPTIMAL,
+          },
+          hala_gfx::HalaAttachmentReference {
+            attachment: 2,
+            layout: hala_gfx::HalaImageLayout::SHADER_READ_ONLY_OPTIMAL,
+          },
+          hala_gfx::HalaAttachmentReference {
+            attachment: 4,
+            layout: hala_gfx::HalaImageLayout::DEPTH_STENCIL_READ_ONLY_OPTIMAL,
+          },
+        ],
+        color_attachments: vec![
+          hala_gfx::HalaAttachmentReference {
+            attachment: 0,
+            layout: hala_gfx::HalaImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+          },
+        ],
+        resolve_attachments: vec![],
+        depth_stencil_attachment: Some(
+          hala_gfx::HalaAttachmentReference {
+            attachment: 3,
+            layout: hala_gfx::HalaImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+          }
+        ),
+        preserve_attachments: vec![],
+      }
     ];
 
     let subpass_deps = vec![
@@ -1297,19 +1339,56 @@ impl HalaRenderer {
         src_access_mask: hala_gfx::HalaAccessFlags::MEMORY_READ,
         dst_access_mask: hala_gfx::HalaAccessFlags::COLOR_ATTACHMENT_WRITE,
         dependency_flags: hala_gfx::HalaDependencyFlags::BY_REGION,
+      },
+      hala_gfx::HalaSubpassDependency {
+        src_subpass: 0,
+        dst_subpass: 1,
+        src_stage_mask: hala_gfx::HalaPipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
+        dst_stage_mask: hala_gfx::HalaPipelineStageFlags::FRAGMENT_SHADER,
+        src_access_mask: hala_gfx::HalaAccessFlags::COLOR_ATTACHMENT_WRITE,
+        dst_access_mask: hala_gfx::HalaAccessFlags::INPUT_ATTACHMENT_READ,
+        dependency_flags: hala_gfx::HalaDependencyFlags::BY_REGION,
+      },
+      hala_gfx::HalaSubpassDependency {
+        src_subpass: 1,
+        dst_subpass: hala_gfx::SUBPASS_EXTERNAL,
+        src_stage_mask: hala_gfx::HalaPipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
+        dst_stage_mask: hala_gfx::HalaPipelineStageFlags::BOTTOM_OF_PIPE,
+        src_access_mask: hala_gfx::HalaAccessFlags::COLOR_ATTACHMENT_WRITE,
+        dst_access_mask: hala_gfx::HalaAccessFlags::NONE,
+        dependency_flags: hala_gfx::HalaDependencyFlags::BY_REGION,
       }
     ];
 
     let deferred_render_pass = hala_gfx::HalaRenderPass::with_subpasses(
       Rc::clone(&context.logical_device),
-      &[albedo_image.format, normal_image.format],
-      &[hala_gfx::HalaAttachmentLoadOp::CLEAR, hala_gfx::HalaAttachmentLoadOp::CLEAR],
-      &[hala_gfx::HalaAttachmentStoreOp::STORE, hala_gfx::HalaAttachmentStoreOp::STORE],
-      Some(depth_image.format),
-      Some(hala_gfx::HalaAttachmentLoadOp::CLEAR),
-      Some(hala_gfx::HalaAttachmentStoreOp::STORE),
-      None,
-      None,
+      &[
+        context.swapchain.desc.format,
+        albedo_image.format,
+        normal_image.format
+      ],
+      &[
+        hala_gfx::HalaAttachmentLoadOp::DONT_CARE,
+        hala_gfx::HalaAttachmentLoadOp::CLEAR,
+        hala_gfx::HalaAttachmentLoadOp::CLEAR,
+      ],
+      &[
+        hala_gfx::HalaAttachmentStoreOp::STORE,
+        hala_gfx::HalaAttachmentStoreOp::DONT_CARE,
+        hala_gfx::HalaAttachmentStoreOp::DONT_CARE,
+      ],
+      &[
+        context.swapchain.depth_stencil_format,
+        depth_image.format,
+      ],
+      &[
+        (hala_gfx::HalaAttachmentLoadOp::DONT_CARE, None),
+        (hala_gfx::HalaAttachmentLoadOp::CLEAR, None),
+      ],
+      &[
+        (hala_gfx::HalaAttachmentStoreOp::DONT_CARE, None),
+        (hala_gfx::HalaAttachmentStoreOp::DONT_CARE, None),
+      ],
       &subpasses,
       &subpass_deps,
       "deferred.render_pass",
