@@ -30,6 +30,8 @@ pub struct HalaGlobalUniform {
   pub p_mtx: glam::Mat4,
   // The view-projection matrix.
   pub vp_mtx: glam::Mat4,
+  // The inverse view-projection matrix.
+  pub i_vp_mtx: glam::Mat4,
 }
 
 #[repr(C, align(4))]
@@ -700,10 +702,12 @@ impl HalaRendererTrait for HalaRenderer {
     let context = self.resources.context.borrow();
 
     // Update global uniform buffer(Only use No.1 camera).
+    let vp_mtx = scene.camera_proj_matrices[0] * scene.camera_view_matrices[0];
     self.global_uniform_buffer.update_memory(0, &[HalaGlobalUniform {
       v_mtx: scene.camera_view_matrices[0],
       p_mtx: scene.camera_proj_matrices[0],
-      vp_mtx: scene.camera_proj_matrices[0] * scene.camera_view_matrices[0],
+      vp_mtx: vp_mtx,
+      i_vp_mtx: vp_mtx.inverse(),
     }])?;
 
     // Update object uniform buffers.
