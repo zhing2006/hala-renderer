@@ -14,6 +14,5 @@ pub use crate::graphics_program::{
   HalaGraphicsProgramDesc,
   HalaGraphicsProgram,
 };
-pub use crate::drz_renderer::HalaRenderer as HalaDeferredRenderer;
 pub use crate::rz_renderer::HalaRenderer as HalaRasterizationRenderer;
 pub use crate::rt_renderer::HalaRenderer as HalaRayTracingRenderer;
