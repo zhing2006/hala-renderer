@@ -1462,10 +1462,12 @@ impl HalaRenderer {
           hala_gfx::HalaAttachmentReference {
             attachment: 1,
             layout: hala_gfx::HalaImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+            aspect_mask: hala_gfx::HalaImageAspectFlags::COLOR,
           },
           hala_gfx::HalaAttachmentReference {
             attachment: 2,
             layout: hala_gfx::HalaImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+            aspect_mask: hala_gfx::HalaImageAspectFlags::COLOR,
           },
         ],
         resolve_attachments: vec![],
@@ -1473,6 +1475,7 @@ impl HalaRenderer {
           hala_gfx::HalaAttachmentReference {
             attachment: 4,
             layout: hala_gfx::HalaImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+            aspect_mask: hala_gfx::HalaImageAspectFlags::DEPTH,
           }
         ),
         preserve_attachments: vec![],
@@ -1483,20 +1486,24 @@ impl HalaRenderer {
           hala_gfx::HalaAttachmentReference {
             attachment: 1,
             layout: hala_gfx::HalaImageLayout::SHADER_READ_ONLY_OPTIMAL,
+            aspect_mask: hala_gfx::HalaImageAspectFlags::COLOR,
           },
           hala_gfx::HalaAttachmentReference {
             attachment: 2,
             layout: hala_gfx::HalaImageLayout::SHADER_READ_ONLY_OPTIMAL,
+            aspect_mask: hala_gfx::HalaImageAspectFlags::COLOR,
           },
           hala_gfx::HalaAttachmentReference {
             attachment: 4,
             layout: hala_gfx::HalaImageLayout::DEPTH_STENCIL_READ_ONLY_OPTIMAL,
+            aspect_mask: hala_gfx::HalaImageAspectFlags::DEPTH,
           },
         ],
         color_attachments: vec![
           hala_gfx::HalaAttachmentReference {
             attachment: 0,
             layout: hala_gfx::HalaImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+            aspect_mask: hala_gfx::HalaImageAspectFlags::COLOR,
           },
         ],
         resolve_attachments: vec![],
@@ -1504,6 +1511,7 @@ impl HalaRenderer {
           hala_gfx::HalaAttachmentReference {
             attachment: 3,
             layout: hala_gfx::HalaImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+            aspect_mask: hala_gfx::HalaImageAspectFlags::DEPTH,
           }
         ),
         preserve_attachments: vec![],
