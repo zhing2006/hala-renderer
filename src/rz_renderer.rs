@@ -1592,7 +1592,7 @@ impl HalaRenderer {
     let mut context = self.resources.context.borrow_mut();
 
     if self.use_deferred {
-
+      Err(HalaRendererError::new("Deferred rendering does not support multisample!", None))?;
     } else {
       self.color_multisample_image = Some(hala_gfx::HalaImage::with_2d_multisample(
         Rc::clone(&context.logical_device),
