@@ -1077,7 +1077,7 @@ impl HalaRenderer {
         Some(0),
         hala_gfx::HalaResolveModeFlags::AVERAGE,
         color_multisample_image,
-        depth_stencil_multisample_image,
+        Some(depth_stencil_multisample_image),
       );
     } else {
       command_buffers.begin_rendering(
