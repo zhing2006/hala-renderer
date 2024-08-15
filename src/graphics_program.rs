@@ -21,6 +21,7 @@ use hala_gfx::{
   HalaPrimitiveTopology,
   HalaPushConstantRange,
   HalaRasterizerState,
+  HalaMultisampleState,
   HalaRayTracingShaderGroupType,
   HalaShader,
   HalaShaderStageFlags,
@@ -49,6 +50,7 @@ pub struct HalaGraphicsProgramDesc {
   pub color_blend: HalaBlendState,
   pub alpha_blend: HalaBlendState,
   pub rasterizer_info: HalaRasterizerState,
+  pub multisample_info: HalaMultisampleState,
   pub depth_info: HalaDepthState,
   pub stencil_info: Option<HalaStencilState>,
 }
@@ -313,6 +315,7 @@ impl HalaGraphicsProgram {
         color_blends.as_slice(),
         alpha_blends.as_slice(),
         &desc.rasterizer_info,
+        &desc.multisample_info,
         &desc.depth_info,
         desc.stencil_info.as_ref(),
         &shaders.iter().map(|s| s.as_ref()).collect::<Vec<_>>(),

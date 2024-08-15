@@ -3,6 +3,7 @@ use std::rc::Rc;
 use hala_gfx::renderpass::HalaRenderPassAttachmentDesc;
 use hala_gfx::{
   HalaGPURequirements,
+  HalaSampleCountFlags,
   HalaShader,
 };
 
@@ -59,6 +60,9 @@ pub struct HalaRenderer {
   pub(crate) use_mesh_shader: bool,
 
   pub(crate) resources: std::mem::ManuallyDrop<HalaRendererResources>,
+
+  pub(crate) color_multisample_image: Option<hala_gfx::HalaImage>,
+  pub(crate) depth_stencil_multisample_image: Option<hala_gfx::HalaImage>,
 
   pub(crate) use_deferred: bool,
   pub(crate) depth_image: Option<hala_gfx::HalaImage>,
@@ -125,6 +129,10 @@ impl Drop for HalaRenderer {
 
     self.object_uniform_buffers.clear();
     self.dynamic_descriptor_set = None;
+
+    self.color_multisample_image = None;
+    self.depth_stencil_multisample_image = None;
+
     unsafe {
       std::mem::ManuallyDrop::drop(&mut self.global_uniform_buffer);
       std::mem::ManuallyDrop::drop(&mut self.static_descriptor_set);
@@ -509,6 +517,7 @@ impl HalaRendererTrait for HalaRenderer {
           &hala_gfx::HalaBlendState::new(hala_gfx::HalaBlendFactor::SRC_ALPHA, hala_gfx::HalaBlendFactor::ONE_MINUS_SRC_ALPHA, hala_gfx::HalaBlendOp::ADD),
           &hala_gfx::HalaBlendState::new(hala_gfx::HalaBlendFactor::ONE, hala_gfx::HalaBlendFactor::ZERO, hala_gfx::HalaBlendOp::ADD),
           &hala_gfx::HalaRasterizerState::new(hala_gfx::HalaFrontFace::COUNTER_CLOCKWISE, hala_gfx::HalaCullModeFlags::BACK, hala_gfx::HalaPolygonMode::FILL, 1.0),
+          &hala_gfx::HalaMultisampleState::new(context.multisample_count, true, 0.3, &[], false, false),
           &hala_gfx::HalaDepthState::new(true, true, hala_gfx::HalaCompareOp::GREATER), // We use reverse Z, so greater is less.
           None,
           shaders.as_slice(),
@@ -557,6 +566,7 @@ impl HalaRendererTrait for HalaRenderer {
                 &hala_gfx::HalaBlendState::new(hala_gfx::HalaBlendFactor::ONE, hala_gfx::HalaBlendFactor::ZERO, hala_gfx::HalaBlendOp::ADD),
               ],
               &hala_gfx::HalaRasterizerState::new(hala_gfx::HalaFrontFace::COUNTER_CLOCKWISE, hala_gfx::HalaCullModeFlags::BACK, hala_gfx::HalaPolygonMode::FILL, 1.0),
+              &hala_gfx::HalaMultisampleState::default(),
               &hala_gfx::HalaDepthState::new(true, true, hala_gfx::HalaCompareOp::GREATER), // We use reverse Z, so greater is less.
               None,
               shaders.as_slice(),
@@ -594,6 +604,7 @@ impl HalaRendererTrait for HalaRenderer {
                 &hala_gfx::HalaBlendState::new(hala_gfx::HalaBlendFactor::ONE, hala_gfx::HalaBlendFactor::ZERO, hala_gfx::HalaBlendOp::ADD),
               ],
               &hala_gfx::HalaRasterizerState::new(hala_gfx::HalaFrontFace::COUNTER_CLOCKWISE, hala_gfx::HalaCullModeFlags::BACK, hala_gfx::HalaPolygonMode::FILL, 1.0),
+              &hala_gfx::HalaMultisampleState::default(),
               &hala_gfx::HalaDepthState::new(true, true, hala_gfx::HalaCompareOp::GREATER), // We use reverse Z, so greater is less.
               None,
               shaders.as_slice(),
@@ -640,6 +651,7 @@ impl HalaRendererTrait for HalaRenderer {
             hala_gfx::HalaBlendState::new(hala_gfx::HalaBlendFactor::ONE, hala_gfx::HalaBlendFactor::ZERO, hala_gfx::HalaBlendOp::ADD),
           ],
           &hala_gfx::HalaRasterizerState::new(hala_gfx::HalaFrontFace::COUNTER_CLOCKWISE, hala_gfx::HalaCullModeFlags::NONE, hala_gfx::HalaPolygonMode::FILL, 1.0),
+          &hala_gfx::HalaMultisampleState::default(),
           &hala_gfx::HalaDepthState::new(false, false, hala_gfx::HalaCompareOp::GREATER), // We use reverse Z, so greater is less.
           None,
           &[&vertex_shader, &fragment_shader],
@@ -666,6 +678,7 @@ impl HalaRendererTrait for HalaRenderer {
           &hala_gfx::HalaBlendState::new(hala_gfx::HalaBlendFactor::ONE, hala_gfx::HalaBlendFactor::ZERO, hala_gfx::HalaBlendOp::ADD),
           &hala_gfx::HalaBlendState::new(hala_gfx::HalaBlendFactor::ONE, hala_gfx::HalaBlendFactor::ZERO, hala_gfx::HalaBlendOp::ADD),
           &hala_gfx::HalaRasterizerState::new(hala_gfx::HalaFrontFace::COUNTER_CLOCKWISE, hala_gfx::HalaCullModeFlags::NONE, hala_gfx::HalaPolygonMode::FILL, 1.0),
+          &hala_gfx::HalaMultisampleState::default(),
           &hala_gfx::HalaDepthState::new(false, false, hala_gfx::HalaCompareOp::GREATER), // We use reverse Z, so greater is less.
           None,
           &[&vertex_shader, &fragment_shader],
@@ -736,23 +749,10 @@ impl HalaRendererTrait for HalaRenderer {
         ui_fn,
       )?;
     } else {
-      context.record_graphics_command_buffer(
+      self.record_forward_command_buffer(
         self.data.image_index,
         &self.resources.graphics_command_buffers,
-        Some([25.0 / 255.0, 118.0 / 255.0, 210.0 / 255.0, 1.0]),
-        Some(0.0),
-        Some(0),  // We use reverse Z, so clear depth to 0.0.
-        |index, command_buffers| {
-          self.draw_scene(index, command_buffers, true)?;
-
-          ui_fn(index, command_buffers)?;
-
-          Ok(())
-        },
-        None,
-        |_, _| {
-          Ok(false)
-        },
+        ui_fn,
       )?;
     }
 
@@ -837,6 +837,9 @@ impl HalaRenderer {
       use_mesh_shader: gpu_req.require_mesh_shader,
 
       resources: std::mem::ManuallyDrop::new(resources),
+
+      color_multisample_image: None,
+      depth_stencil_multisample_image: None,
 
       use_deferred: false,
       depth_image: None,
@@ -985,6 +988,138 @@ impl HalaRenderer {
         primitive_index += 1;
       }
     }
+
+    Ok(())
+  }
+
+  /// Record the forward rendering command buffer.
+  /// param index: The index of the current image.
+  /// param command_buffers: The command buffers.
+  /// param ui_fn: The draw UI function.
+  /// return: The result.
+  fn record_forward_command_buffer<F>(&self, index: usize, command_buffers: &hala_gfx::HalaCommandBufferSet, ui_fn: F) -> Result<(), HalaRendererError>
+    where F: FnOnce(usize, &hala_gfx::HalaCommandBufferSet) -> Result<(), hala_gfx::HalaGfxError>
+  {
+    let context = self.resources.context.borrow();
+
+    // Prepare the command buffer and timestamp.
+    command_buffers.reset(index, false)?;
+    command_buffers.begin(index, hala_gfx::HalaCommandBufferUsageFlags::empty())?;
+    command_buffers.reset_query_pool(index, &context.timestamp_query_pool, (index * 2) as u32, 2);
+    command_buffers.write_timestamp(index, hala_gfx::HalaPipelineStageFlags2::NONE, &context.timestamp_query_pool, (index * 2) as u32);
+
+    if cfg!(debug_assertions) {
+      command_buffers.begin_debug_label(index, "Draw", [1.0, 1.0, 1.0, 1.0]);
+    }
+
+    command_buffers.set_swapchain_image_barrier(
+      index,
+      &context.swapchain,
+      &hala_gfx::HalaImageBarrierInfo {
+        old_layout: hala_gfx::HalaImageLayout::UNDEFINED,
+        new_layout: hala_gfx::HalaImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+        src_access_mask: hala_gfx::HalaAccessFlags2::NONE,
+        dst_access_mask: hala_gfx::HalaAccessFlags2::COLOR_ATTACHMENT_WRITE,
+        src_stage_mask: hala_gfx::HalaPipelineStageFlags2::TOP_OF_PIPE,
+        dst_stage_mask: hala_gfx::HalaPipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT,
+        aspect_mask: hala_gfx::HalaImageAspectFlags::COLOR,
+        ..Default::default()
+      },
+      &hala_gfx::HalaImageBarrierInfo {
+        old_layout: hala_gfx::HalaImageLayout::UNDEFINED,
+        new_layout: hala_gfx::HalaImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+        src_access_mask: hala_gfx::HalaAccessFlags2::NONE,
+        dst_access_mask: hala_gfx::HalaAccessFlags2::DEPTH_STENCIL_ATTACHMENT_WRITE,
+        src_stage_mask: hala_gfx::HalaPipelineStageFlags2::EARLY_FRAGMENT_TESTS | hala_gfx::HalaPipelineStageFlags2::LATE_FRAGMENT_TESTS,
+        dst_stage_mask: hala_gfx::HalaPipelineStageFlags2::EARLY_FRAGMENT_TESTS | hala_gfx::HalaPipelineStageFlags2::LATE_FRAGMENT_TESTS,
+        aspect_mask: hala_gfx::HalaImageAspectFlags::DEPTH | if context.swapchain.has_stencil { hala_gfx::HalaImageAspectFlags::STENCIL } else { hala_gfx::HalaImageAspectFlags::empty() },
+        ..Default::default()
+      }
+    );
+
+    if context.multisample_count != hala_gfx::HalaSampleCountFlags::TYPE_1 {
+      let color_multisample_image = self.color_multisample_image.as_ref().ok_or(HalaRendererError::new("The color multisample image is none!", None))?;
+      let depth_stencil_multisample_image = self.depth_stencil_multisample_image.as_ref().ok_or(HalaRendererError::new("The depth stencil multisample image is none!", None))?;
+      command_buffers.set_image_barriers(
+        index,
+        &[
+          hala_gfx::HalaImageBarrierInfo {
+            old_layout: hala_gfx::HalaImageLayout::UNDEFINED,
+            new_layout: hala_gfx::HalaImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+            src_access_mask: hala_gfx::HalaAccessFlags2::NONE,
+            dst_access_mask: hala_gfx::HalaAccessFlags2::COLOR_ATTACHMENT_WRITE,
+            src_stage_mask: hala_gfx::HalaPipelineStageFlags2::TOP_OF_PIPE,
+            dst_stage_mask: hala_gfx::HalaPipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT,
+            aspect_mask: hala_gfx::HalaImageAspectFlags::COLOR,
+            image: color_multisample_image.raw,
+            ..Default::default()
+          },
+          hala_gfx::HalaImageBarrierInfo {
+            old_layout: hala_gfx::HalaImageLayout::UNDEFINED,
+            new_layout: hala_gfx::HalaImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+            src_access_mask: hala_gfx::HalaAccessFlags2::NONE,
+            dst_access_mask: hala_gfx::HalaAccessFlags2::DEPTH_STENCIL_ATTACHMENT_WRITE,
+            src_stage_mask: hala_gfx::HalaPipelineStageFlags2::EARLY_FRAGMENT_TESTS | hala_gfx::HalaPipelineStageFlags2::LATE_FRAGMENT_TESTS,
+            dst_stage_mask: hala_gfx::HalaPipelineStageFlags2::EARLY_FRAGMENT_TESTS | hala_gfx::HalaPipelineStageFlags2::LATE_FRAGMENT_TESTS,
+            aspect_mask: hala_gfx::HalaImageAspectFlags::DEPTH | if context.swapchain.has_stencil { hala_gfx::HalaImageAspectFlags::STENCIL } else { hala_gfx::HalaImageAspectFlags::empty() },
+            image: depth_stencil_multisample_image.raw,
+            ..Default::default()
+          },
+        ],
+      );
+
+      command_buffers.begin_rendering_with_multisample(
+        index,
+        &context.swapchain,
+        (0, 0, context.gpu_req.width, context.gpu_req.height),
+        Some([25.0 / 255.0, 118.0 / 255.0, 210.0 / 255.0, 1.0]),
+        Some(0.0),
+        Some(0),
+        hala_gfx::HalaResolveModeFlags::AVERAGE,
+        color_multisample_image,
+        depth_stencil_multisample_image,
+      );
+    } else {
+      command_buffers.begin_rendering(
+        index,
+        &context.swapchain,
+        (0, 0, context.gpu_req.width, context.gpu_req.height),
+        Some([25.0 / 255.0, 118.0 / 255.0, 210.0 / 255.0, 1.0]),
+        Some(0.0),
+        Some(0),
+      );
+    }
+
+    self.draw_scene(index, command_buffers, true)?;
+
+    ui_fn(index, command_buffers)?;
+
+    command_buffers.end_rendering(index);
+    command_buffers.set_image_barriers(
+      index,
+      &[hala_gfx::HalaImageBarrierInfo {
+        old_layout: hala_gfx::HalaImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+        new_layout: hala_gfx::HalaImageLayout::PRESENT_SRC,
+        src_access_mask: hala_gfx::HalaAccessFlags2::COLOR_ATTACHMENT_WRITE,
+        dst_access_mask: hala_gfx::HalaAccessFlags2::NONE,
+        src_stage_mask: hala_gfx::HalaPipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT,
+        dst_stage_mask: hala_gfx::HalaPipelineStageFlags2::BOTTOM_OF_PIPE,
+        aspect_mask: hala_gfx::HalaImageAspectFlags::COLOR,
+        image: context.swapchain.images[index],
+        ..Default::default()
+      }],
+    );
+
+    if cfg!(debug_assertions) {
+      command_buffers.end_debug_label(index);
+    }
+
+    command_buffers.write_timestamp(
+      index,
+      hala_gfx::HalaPipelineStageFlags2::ALL_COMMANDS,
+      &context.timestamp_query_pool,
+      (index * 2 + 1) as u32);
+    command_buffers.end(index)?;
 
     Ok(())
   }
@@ -1448,6 +1583,57 @@ impl HalaRenderer {
     self.lighting_descriptor_set = None;
     self.lighting_vertex_shader = None;
     self.lighting_fragment_shader = None;
+  }
+
+  /// Enable multisample.
+  /// param sample_count: The sample count.
+  /// return: The result.
+  pub fn enable_multisample(&mut self, sample_count: HalaSampleCountFlags) -> Result<(), HalaRendererError> {
+    let mut context = self.resources.context.borrow_mut();
+
+    if self.use_deferred {
+
+    } else {
+      self.color_multisample_image = Some(hala_gfx::HalaImage::with_2d_multisample(
+        Rc::clone(&context.logical_device),
+        hala_gfx::HalaImageUsageFlags::COLOR_ATTACHMENT | hala_gfx::HalaImageUsageFlags::TRANSIENT_ATTACHMENT,
+        context.swapchain.desc.format,
+        self.info.width,
+        self.info.height,
+        1,
+        1,
+        sample_count,
+        hala_gfx::HalaMemoryLocation::GpuOnly,
+        "color_multisample.image",
+      )?);
+
+      self.depth_stencil_multisample_image = Some(hala_gfx::HalaImage::with_2d_multisample(
+        Rc::clone(&context.logical_device),
+        hala_gfx::HalaImageUsageFlags::DEPTH_STENCIL_ATTACHMENT | hala_gfx::HalaImageUsageFlags::TRANSIENT_ATTACHMENT,
+        context.swapchain.depth_stencil_format,
+        self.info.width,
+        self.info.height,
+        1,
+        1,
+        sample_count,
+        hala_gfx::HalaMemoryLocation::GpuOnly,
+        "depth_stencil_multisample.image",
+      )?);
+    }
+
+    context.multisample_count = sample_count;
+
+    Ok(())
+  }
+
+  /// Disable multisample.
+  /// return: The result.
+  pub fn disable_multisample(&mut self) {
+    let mut context = self.resources.context.borrow_mut();
+
+    self.color_multisample_image = None;
+    self.depth_stencil_multisample_image = None;
+    context.multisample_count = HalaSampleCountFlags::TYPE_1;
   }
 
   /// Create deferred render pass with subpasses.
