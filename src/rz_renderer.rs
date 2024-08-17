@@ -499,7 +499,7 @@ impl HalaRendererTrait for HalaRenderer {
           size: if !self.use_mesh_shader {
             12  // Mesh index, Material index and Primitive index.
           } else {
-            20  // Mesh index, Material index, Primitive index, Meshlet count and Dispatch size X.
+            16  // Mesh index, Material index, Primitive index and Meshlet count.
           }
         },
       ];
@@ -923,7 +923,6 @@ impl HalaRenderer {
           push_constants.extend_from_slice(&primitive_index.to_le_bytes());
           if self.use_mesh_shader {
             push_constants.extend_from_slice(&primitive.meshlet_count.to_le_bytes());
-            push_constants.extend_from_slice(&dispatch_size_x.to_le_bytes());
           }
 
           // Use specific material type pipeline state object.
