@@ -44,14 +44,23 @@ pub struct HalaGraphicsProgramDesc {
   pub task_shader_file_path: Option<String>,
   pub mesh_shader_file_path: Option<String>,
   pub fragment_shader_file_path: String,
+  #[serde(default)]
   pub push_constant_size: u32,
+  #[serde(default)]
   pub bindings: Vec<HalaDescriptorType>,
+  #[serde(default)]
   pub primitive_topology: HalaPrimitiveTopology,
+  #[serde(default)]
   pub color_blend: HalaBlendState,
+  #[serde(default)]
   pub alpha_blend: HalaBlendState,
+  #[serde(default)]
   pub rasterizer_info: HalaRasterizerState,
+  #[serde(default)]
   pub multisample_info: HalaMultisampleState,
+  #[serde(default)]
   pub depth_info: HalaDepthState,
+  #[serde(default)]
   pub stencil_info: Option<HalaStencilState>,
 }
 

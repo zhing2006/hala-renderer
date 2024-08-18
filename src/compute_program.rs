@@ -25,6 +25,7 @@ use crate::shader_cache::HalaShaderCache;
 pub struct HalaComputeProgramDesc {
   pub shader_file_path: String,
   pub push_constant_size: u32,
+  #[serde(default)]
   pub bindings: Vec<HalaDescriptorType>,
 }
 

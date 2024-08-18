@@ -33,12 +33,27 @@ pub struct HalaRayTracingHitShaderDesc {
 #[derive(Serialize, Deserialize)]
 pub struct HalaRayTracingProgramDesc {
   pub raygen_shader_file_paths: Vec<String>,
+  #[serde(default)]
   pub miss_shader_file_paths: Vec<String>,
   pub hit_shader_file_paths: Vec<HalaRayTracingHitShaderDesc>,
+  #[serde(default)]
   pub callable_shader_file_paths: Vec<String>,
+  #[serde(default)]
   pub push_constant_size: u32,
+  #[serde(default)]
   pub bindings: Vec<HalaDescriptorType>,
+  #[serde(default = "HalaRayTracingProgramDesc::default_ray_recursion_depth")]
   pub ray_recursion_depth: u32,
+}
+
+impl HalaRayTracingProgramDesc {
+
+  /// The default ray recursion depth.
+  /// return: The default ray recursion depth.
+  fn default_ray_recursion_depth() -> u32 {
+    1
+  }
+
 }
 
 type RcRefHalaShader = Rc<RefCell<HalaShader>>;
