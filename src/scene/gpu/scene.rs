@@ -29,4 +29,7 @@ pub struct HalaScene {
   pub light_btlas: Option<HalaAccelerationStructure>,
 
   pub light_data: Vec<crate::scene::gpu::HalaLight>,
+
+  pub meshlet_count: u32,
+  pub meshlets: Option<HalaBuffer>,
 }

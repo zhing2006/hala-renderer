@@ -230,7 +230,9 @@ impl HalaRendererTrait for HalaRenderer {
         vertex_buffers.push(primitive.vertex_buffer.as_ref());
         index_buffers.push(primitive.index_buffer.as_ref());
         if self.use_mesh_shader {
-          meshlet_buffers.push(primitive.meshlet_buffer.as_ref().ok_or(HalaRendererError::new("The meshlet buffer is none!", None))?);
+          if let Some(meshlet_buffer) = &primitive.meshlet_buffer {
+            meshlet_buffers.push(meshlet_buffer);
+          }
           meshlet_vertex_buffers.push(primitive.meshlet_vertex_buffer.as_ref().ok_or(HalaRendererError::new("The meshlet vertex buffer is none!", None))?);
           meshlet_primitive_buffers.push(primitive.meshlet_primitive_buffer.as_ref().ok_or(HalaRendererError::new("The meshlet primitive buffer is none!", None))?);
         }
@@ -1949,6 +1951,7 @@ impl HalaRenderer {
       &self.resources.transfer_command_buffers,
       scene_in_cpu,
       self.use_mesh_shader,
+      false,
     false)?;
 
     self.scene_in_gpu = Some(scene_in_gpu);

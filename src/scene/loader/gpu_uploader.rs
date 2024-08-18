@@ -50,6 +50,7 @@ impl HalaSceneGPUUploader {
   /// param transfer_command_buffers: The transfer command buffers.
   /// param scene_in_cpu: The scene in the CPU.
   /// param use_for_mesh_shader: Whether the scene is used for mesh shader.
+  /// param use_global_meshlets: Whether the scene uses global meshlets.
   /// param use_for_ray_tracing: Whether the scene is used for ray tracing.
   /// return: The scene in the GPU.
   pub fn upload(
@@ -58,6 +59,7 @@ impl HalaSceneGPUUploader {
     transfer_command_buffers: &HalaCommandBufferSet,
     scene_in_cpu: &mut cpu::HalaScene,
     use_for_mesh_shader: bool,
+    use_global_meshlets: bool,
     use_for_ray_tracing: bool,
   ) -> Result<gpu::HalaScene, HalaRendererError> {
     // Calculate the buffer size.
@@ -463,7 +465,7 @@ impl HalaSceneGPUUploader {
           index_count: prim.indices.len() as u32,
           material_index,
           bounds,
-          meshlet_count: 0u32,
+          meshlet_count: 0,
           meshlet_buffer: None,
           meshlet_vertex_buffer: None,
           meshlet_primitive_buffer: None,
@@ -505,6 +507,8 @@ impl HalaSceneGPUUploader {
       primitives: Vec::new(),
       light_btlas: None,
       light_data: lights,
+      meshlet_count: 0,
+      meshlets: None,
     };
 
     if use_for_mesh_shader {
@@ -514,6 +518,7 @@ impl HalaSceneGPUUploader {
         transfer_command_buffers,
         scene_in_cpu,
         &mut scene_in_gpu,
+        use_global_meshlets,
       )?;
     }
 
@@ -536,6 +541,7 @@ impl HalaSceneGPUUploader {
   /// param transfer_command_buffers: The transfer command buffers.
   /// param scene_in_cpu: The scene in the CPU.
   /// param scene_in_gpu: The scene in the GPU.
+  /// param use_global_meshlets: Whether the scene uses global meshlets.
   /// return: The result.
   fn additively_upload_for_mesh_shader(
     context: &HalaContext,
@@ -543,9 +549,11 @@ impl HalaSceneGPUUploader {
     transfer_command_buffers: &HalaCommandBufferSet,
     scene_in_cpu: &mut cpu::HalaScene,
     scene_in_gpu: &mut gpu::HalaScene,
+    use_global_meshlets: bool,
   ) -> Result<(), HalaRendererError> {
     let mut staging_buffer_size = 0u64;
 
+    let mut global_meshlets = Vec::new();
     let mut draw_index = 0u32;
     for mesh_in_cpu in scene_in_cpu.meshes.iter_mut() {
       for prim_in_cpu in mesh_in_cpu.primitives.iter_mut() {
@@ -586,7 +594,11 @@ impl HalaSceneGPUUploader {
           };
           // log::info!("Meshlet: V[{}, {}], P[{}, {}]", meshlet.offset_of_vertices, meshlet.num_of_vertices, meshlet.offset_of_primitives, meshlet.num_of_primitives);
 
-          prim_in_cpu.meshlets.push(meshlet);
+          if use_global_meshlets {
+            global_meshlets.push(meshlet.clone());
+          } else {
+            prim_in_cpu.meshlets.push(meshlet);
+          }
           for i in wrapped_meshlet_in_cpu.vertices.iter() {
             prim_in_cpu.meshlet_vertices.push(*i);
           }
@@ -611,11 +623,13 @@ impl HalaSceneGPUUploader {
         );
       }
     }
+    let global_meshlet_count = global_meshlets.len();
 
     // Create staging buffer.
+    let global_meshlet_buffer_size = (std::mem::size_of::<HalaMeshlet>() * global_meshlet_count) as u64;
     let staging_buffer = HalaBuffer::new(
       Rc::clone(&context.logical_device),
-      staging_buffer_size,
+      std::cmp::max(staging_buffer_size, global_meshlet_buffer_size),
       HalaBufferUsageFlags::TRANSFER_SRC,
       HalaMemoryLocation::CpuToGpu,
       "staging.buffer")?;
@@ -626,27 +640,29 @@ impl HalaSceneGPUUploader {
       for (prim_index, prim) in mesh.primitives.iter_mut().enumerate() {
         let prim_in_cpu = &mesh_in_cpu.primitives[prim_index];
 
-        prim.meshlet_count = prim_in_cpu.meshlets.len() as u32;
-
         // Create meshlet informatin buffer.
-        let meshlet_size = std::mem::size_of::<HalaMeshlet>();
-        let meshlet_buffer_size = (meshlet_size * prim_in_cpu.meshlets.len()) as u64;
-        let meshlet_buffer = HalaBuffer::new(
-          Rc::clone(&context.logical_device),
-          meshlet_buffer_size,
-          HalaBufferUsageFlags::SHADER_DEVICE_ADDRESS
-            | HalaBufferUsageFlags::STORAGE_BUFFER
-            | HalaBufferUsageFlags::TRANSFER_DST,
-          HalaMemoryLocation::GpuOnly,
-          &format!("meshlet_info_{}_{}.buffer", mesh_index, prim_index)
-        )?;
-        meshlet_buffer.update_gpu_memory_with_buffer_raw(
-          prim_in_cpu.meshlets.as_ptr() as *const u8,
-          meshlet_buffer_size as usize,
-          &staging_buffer,
-          transfer_command_buffers)?;
+        if !use_global_meshlets {
+          prim.meshlet_count = prim_in_cpu.meshlets.len() as u32;
 
-        prim.meshlet_buffer = Some(meshlet_buffer);
+          let meshlet_size = std::mem::size_of::<HalaMeshlet>();
+          let meshlet_buffer_size = (meshlet_size * prim_in_cpu.meshlets.len()) as u64;
+          let meshlet_buffer = HalaBuffer::new(
+            Rc::clone(&context.logical_device),
+            meshlet_buffer_size,
+            HalaBufferUsageFlags::SHADER_DEVICE_ADDRESS
+              | HalaBufferUsageFlags::STORAGE_BUFFER
+              | HalaBufferUsageFlags::TRANSFER_DST,
+            HalaMemoryLocation::GpuOnly,
+            &format!("meshlet_info_{}_{}.buffer", mesh_index, prim_index)
+          )?;
+          meshlet_buffer.update_gpu_memory_with_buffer_raw(
+            prim_in_cpu.meshlets.as_ptr() as *const u8,
+            meshlet_buffer_size as usize,
+            &staging_buffer,
+            transfer_command_buffers)?;
+
+          prim.meshlet_buffer = Some(meshlet_buffer);
+        }
 
         // Create meshlet vertex buffer.
         let meshlet_vertex_buffer_size = (std::mem::size_of::<u32>() * prim_in_cpu.meshlet_vertices.len()) as u64;
@@ -684,6 +700,25 @@ impl HalaSceneGPUUploader {
 
         prim.meshlet_primitive_buffer = Some(meshlet_primitive_buffer);
       }
+    }
+
+    // Create global meshlet buffer.
+    if use_global_meshlets {
+      let global_meshlet_buffer = HalaBuffer::new(
+        Rc::clone(&context.logical_device),
+        global_meshlet_buffer_size,
+        HalaBufferUsageFlags::SHADER_DEVICE_ADDRESS
+          | HalaBufferUsageFlags::STORAGE_BUFFER
+          | HalaBufferUsageFlags::TRANSFER_DST,
+        HalaMemoryLocation::GpuOnly,
+        "global_meshlet.buffer")?;
+      global_meshlet_buffer.update_gpu_memory_with_buffer_raw(
+        global_meshlets.as_ptr() as *const u8,
+        global_meshlet_buffer_size as usize,
+        &staging_buffer,
+        transfer_command_buffers)?;
+      scene_in_gpu.meshlet_count = global_meshlet_count as u32;
+      scene_in_gpu.meshlets = Some(global_meshlet_buffer);
     }
 
     Ok(())

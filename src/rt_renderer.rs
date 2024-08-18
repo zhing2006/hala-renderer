@@ -1182,6 +1182,7 @@ impl HalaRenderer {
       &self.resources.transfer_command_buffers,
       scene_in_cpu,
       false,
+      false,
       true)?;
     self.scene_in_gpu = Some(scene_in_gpu);
 
