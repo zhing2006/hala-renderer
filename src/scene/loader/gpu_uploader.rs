@@ -39,6 +39,13 @@ use super::super::gpu;
 const MAX_CAMERA_COUNT: usize = 8;
 const MAX_LIGHT_COUNT: usize = 32;
 
+#[repr(C, align(4))]
+#[derive(Debug, Clone, Copy)]
+struct DrawData {
+  pub object_index: u32,
+  pub material_index: u32,
+}
+
 /// Upload the scene to the GPU from the CPU.
 pub struct HalaSceneGPUUploader;
 
@@ -509,6 +516,7 @@ impl HalaSceneGPUUploader {
       light_data: lights,
       meshlet_count: 0,
       meshlets: None,
+      meshlet_draw_data: None,
     };
 
     if use_for_mesh_shader {
@@ -554,8 +562,9 @@ impl HalaSceneGPUUploader {
     let mut staging_buffer_size = 0u64;
 
     let mut global_meshlets = Vec::new();
+    let mut draw_data = Vec::new();
     let mut draw_index = 0u32;
-    for mesh_in_cpu in scene_in_cpu.meshes.iter_mut() {
+    for (mesh_index, mesh_in_cpu) in scene_in_cpu.meshes.iter_mut().enumerate() {
       for prim_in_cpu in mesh_in_cpu.primitives.iter_mut() {
         let vertex_data_adapter = unsafe {
           meshopt::VertexDataAdapter::new(
@@ -606,6 +615,13 @@ impl HalaSceneGPUUploader {
             prim_in_cpu.meshlet_primitives.push((c[0] as u32) | (c[1] as u32) << 8 | (c[2] as u32) << 16);
           }
         }
+
+        if use_global_meshlets {
+          draw_data.push(DrawData {
+            object_index: mesh_index as u32,
+            material_index: prim_in_cpu.material_index,
+          });
+        }
         draw_index += 1;
 
         let meshlet_buffer_size = (std::mem::size_of::<HalaMeshlet>() * prim_in_cpu.meshlets.len()) as u64;
@@ -626,10 +642,11 @@ impl HalaSceneGPUUploader {
     let global_meshlet_count = global_meshlets.len();
 
     // Create staging buffer.
-    let global_meshlet_buffer_size = (std::mem::size_of::<HalaMeshlet>() * global_meshlet_count) as u64;
+    let global_meshlet_buffer_size = if use_global_meshlets { (std::mem::size_of::<HalaMeshlet>() * global_meshlet_count) as u64 } else { 0 };
+    let draw_data_buffer_size = if use_global_meshlets { (std::mem::size_of::<DrawData>() * draw_data.len()) as u64 } else { 0 };
     let staging_buffer = HalaBuffer::new(
       Rc::clone(&context.logical_device),
-      std::cmp::max(staging_buffer_size, global_meshlet_buffer_size),
+      std::cmp::max(staging_buffer_size, std::cmp::max(global_meshlet_buffer_size, draw_data_buffer_size)),
       HalaBufferUsageFlags::TRANSFER_SRC,
       HalaMemoryLocation::CpuToGpu,
       "staging.buffer")?;
@@ -702,8 +719,8 @@ impl HalaSceneGPUUploader {
       }
     }
 
-    // Create global meshlet buffer.
     if use_global_meshlets {
+      // Create global meshlet buffer.
       let global_meshlet_buffer = HalaBuffer::new(
         Rc::clone(&context.logical_device),
         global_meshlet_buffer_size,
@@ -712,13 +729,35 @@ impl HalaSceneGPUUploader {
           | HalaBufferUsageFlags::TRANSFER_DST,
         HalaMemoryLocation::GpuOnly,
         "global_meshlet.buffer")?;
+
+      // Upload the global meshlets.
       global_meshlet_buffer.update_gpu_memory_with_buffer_raw(
         global_meshlets.as_ptr() as *const u8,
         global_meshlet_buffer_size as usize,
         &staging_buffer,
         transfer_command_buffers)?;
+
+      // Create the draw data buffer.
+      let draw_data_buffer = hala_gfx::HalaBuffer::new(
+        Rc::clone(&context.logical_device),
+        draw_data_buffer_size,
+        HalaBufferUsageFlags::SHADER_DEVICE_ADDRESS
+          | hala_gfx::HalaBufferUsageFlags::STORAGE_BUFFER
+          | hala_gfx::HalaBufferUsageFlags::TRANSFER_DST,
+        hala_gfx::HalaMemoryLocation::GpuOnly,
+        "draw_data.buffer",
+      )?;
+
+      // Upload the draw data.
+      draw_data_buffer.update_gpu_memory_with_buffer_raw(
+        draw_data.as_ptr() as *const u8,
+        draw_data_buffer_size as usize,
+        &staging_buffer,
+        transfer_command_buffers)?;
+
       scene_in_gpu.meshlet_count = global_meshlet_count as u32;
       scene_in_gpu.meshlets = Some(global_meshlet_buffer);
+      scene_in_gpu.meshlet_draw_data = Some(draw_data_buffer);
     }
 
     Ok(())
