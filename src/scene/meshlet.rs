@@ -11,5 +11,5 @@ pub struct HalaMeshlet {
   pub num_of_primitives: u32,
   pub offset_of_vertices: u32,
   pub offset_of_primitives: u32,
-  pub padding: f32,
+  pub draw_index: u32,
 }

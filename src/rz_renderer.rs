@@ -898,7 +898,7 @@ impl HalaRenderer {
     );
 
     // Render the scene.
-    let mut primitive_index = 0u32;
+    let mut draw_index = 0u32;
     let scene = self.scene_in_gpu.as_ref().ok_or(hala_gfx::HalaGfxError::new("The scene in GPU is none!", None))?;
     for (mesh_index, mesh) in scene.meshes.iter().enumerate() {
       for primitive in mesh.primitives.iter() {
@@ -920,7 +920,7 @@ impl HalaRenderer {
           let mut push_constants = Vec::new();
           push_constants.extend_from_slice(&(mesh_index as u32).to_le_bytes());
           push_constants.extend_from_slice(&primitive.material_index.to_le_bytes());
-          push_constants.extend_from_slice(&primitive_index.to_le_bytes());
+          push_constants.extend_from_slice(&draw_index.to_le_bytes());
           if self.use_mesh_shader {
             push_constants.extend_from_slice(&primitive.meshlet_count.to_le_bytes());
           }
@@ -984,7 +984,7 @@ impl HalaRenderer {
           }
         }
 
-        primitive_index += 1;
+        draw_index += 1;
       }
     }
 
