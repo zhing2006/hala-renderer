@@ -528,7 +528,7 @@ impl HalaRendererTrait for HalaRenderer {
           &hala_gfx::HalaDepthState::new(true, true, hala_gfx::HalaCompareOp::GREATER), // We use reverse Z, so greater is less.
           None,
           shaders.as_slice(),
-          &[hala_gfx::HalaDynamicState::VIEWPORT],
+          &[hala_gfx::HalaDynamicState::VIEWPORT, hala_gfx::HalaDynamicState::SCISSOR],
           Some(&pipeline_cache),
           &if self.use_mesh_shader {
             format!("modern_forward_{}.graphics_pipeline", i)
@@ -577,7 +577,7 @@ impl HalaRendererTrait for HalaRenderer {
               &hala_gfx::HalaDepthState::new(true, true, hala_gfx::HalaCompareOp::GREATER), // We use reverse Z, so greater is less.
               None,
               shaders.as_slice(),
-              &[hala_gfx::HalaDynamicState::VIEWPORT],
+              &[hala_gfx::HalaDynamicState::VIEWPORT, hala_gfx::HalaDynamicState::SCISSOR],
               Some(deferred_render_pass),
               0,
               Some(&pipeline_cache),
@@ -615,7 +615,7 @@ impl HalaRendererTrait for HalaRenderer {
               &hala_gfx::HalaDepthState::new(true, true, hala_gfx::HalaCompareOp::GREATER), // We use reverse Z, so greater is less.
               None,
               shaders.as_slice(),
-              &[hala_gfx::HalaDynamicState::VIEWPORT],
+              &[hala_gfx::HalaDynamicState::VIEWPORT, hala_gfx::HalaDynamicState::SCISSOR],
               Some(&pipeline_cache),
               &if self.use_mesh_shader {
                 format!("modern_deferred_{}.graphics_pipeline", i)
@@ -662,7 +662,7 @@ impl HalaRendererTrait for HalaRenderer {
           &hala_gfx::HalaDepthState::new(false, false, hala_gfx::HalaCompareOp::GREATER), // We use reverse Z, so greater is less.
           None,
           &[&vertex_shader, &fragment_shader],
-          &[hala_gfx::HalaDynamicState::VIEWPORT],
+          &[hala_gfx::HalaDynamicState::VIEWPORT, hala_gfx::HalaDynamicState::SCISSOR],
           Some(deferred_render_pass),
           1,
           Some(&pipeline_cache),
@@ -689,7 +689,7 @@ impl HalaRendererTrait for HalaRenderer {
           &hala_gfx::HalaDepthState::new(false, false, hala_gfx::HalaCompareOp::GREATER), // We use reverse Z, so greater is less.
           None,
           &[&vertex_shader, &fragment_shader],
-          &[hala_gfx::HalaDynamicState::VIEWPORT],
+          &[hala_gfx::HalaDynamicState::VIEWPORT, hala_gfx::HalaDynamicState::SCISSOR],
           Some(&pipeline_cache),
           "lighting_pass.graphics_pipeline",
         )?
@@ -901,6 +901,13 @@ impl HalaRenderer {
           0.,
           1.
         ),
+      ],
+    );
+    command_buffers.set_scissor(
+      index,
+      0,
+      &[
+        (0, 0, self.info.width, self.info.height),
       ],
     );
 
@@ -1332,6 +1339,13 @@ impl HalaRenderer {
         ),
       ],
     );
+    command_buffers.set_scissor(
+      index,
+      0,
+      &[
+        (0, 0, self.info.width, self.info.height),
+      ],
+    );
 
     // Bind lighting graphics pipeline.
     let pipeline = self.lighting_graphics_pipeline.as_ref().ok_or(HalaRendererError::new("The lighting pass graphics pipeline is none!", None))?;
@@ -1379,6 +1393,13 @@ impl HalaRenderer {
             0.,
             1.
           ),
+        ],
+      );
+      command_buffers.set_scissor(
+        index,
+        0,
+        &[
+          (0, 0, self.info.width, self.info.height),
         ],
       );
 
