@@ -501,7 +501,12 @@ impl HalaRendererTrait for HalaRenderer {
           size: if !self.use_mesh_shader {
             12  // Mesh index, Material index and Primitive index.
           } else {
-            16  // Mesh index, Material index, Primitive index and Meshlet count.
+            if scene.meshlets.is_none() {
+              16  // Mesh index, Material index, Primitive index and Meshlet count.
+            } else {
+              // If we use global meshlets, we only need Meshlet count.
+              4
+            }
           }
         },
       ];
