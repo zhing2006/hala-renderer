@@ -204,7 +204,7 @@ impl HalaGraphicsProgram {
   pub fn with_rt<T, DSL, VIAD, VIBD>(
     logical_device: Rc<RefCell<HalaLogicalDevice>>,
     color_images: &[T],
-    depth_image: Option<&T>,
+    depth_image: Option<T>,
     descriptor_set_layouts: &[DSL],
     flags: HalaPipelineCreateFlags,
     vertex_attribute_descriptions: &[VIAD],
