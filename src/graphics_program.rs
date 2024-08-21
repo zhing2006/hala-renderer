@@ -40,6 +40,14 @@ type OptionRcRefHalaShader = Option<RcRefHalaShader>;
 /// The graphics program description.
 #[derive(Serialize, Deserialize)]
 pub struct HalaGraphicsProgramDesc {
+  #[serde(default)]
+  pub color_formats: Vec<HalaFormat>,
+  #[serde(default)]
+  pub depth_format: Option<HalaFormat>,
+  #[serde(default)]
+  pub width: u32,
+  #[serde(default)]
+  pub height: u32,
   pub vertex_shader_file_path: Option<String>,
   pub task_shader_file_path: Option<String>,
   pub mesh_shader_file_path: Option<String>,
@@ -144,7 +152,6 @@ impl HalaGraphicsProgram {
 
   /// Create a new graphics program.
   /// param logical_device: The logical device.
-  /// param swapchain: The swapchain.
   /// param descriptor_set_layouts: The descriptor set layouts.
   /// param flags: The pipeline create flags.
   /// param vertex_attribute_descriptions: The vertex attribute descriptions.
@@ -155,6 +162,51 @@ impl HalaGraphicsProgram {
   /// param debug_name: The debug name.
   /// return: The result of the graphics program.
   pub fn new<DSL, VIAD, VIBD>(
+    logical_device: Rc<RefCell<HalaLogicalDevice>>,
+    descriptor_set_layouts: &[DSL],
+    flags: HalaPipelineCreateFlags,
+    vertex_attribute_descriptions: &[VIAD],
+    vertex_binding_descriptions: &[VIBD],
+    dynamic_states: &[HalaDynamicState],
+    desc: &HalaGraphicsProgramDesc,
+    pipeline_cache: Option<&HalaPipelineCache>,
+    debug_name: &str,
+  ) -> Result<Self, HalaRendererError>
+    where
+      DSL: AsRef<HalaDescriptorSetLayout>,
+      VIAD: AsRef<HalaVertexInputAttributeDescription>,
+      VIBD: AsRef<HalaVertexInputBindingDescription>,
+  {
+    Self::with_formats_and_size(
+      logical_device,
+      desc.color_formats.as_slice(),
+      desc.depth_format,
+      desc.width,
+      desc.height,
+      descriptor_set_layouts,
+      flags,
+      vertex_attribute_descriptions,
+      vertex_binding_descriptions,
+      dynamic_states,
+      desc,
+      pipeline_cache,
+      debug_name,
+    )
+  }
+
+  /// Create a new graphics program with swapchain.
+  /// param logical_device: The logical device.
+  /// param swapchain: The swapchain.
+  /// param descriptor_set_layouts: The descriptor set layouts.
+  /// param flags: The pipeline create flags.
+  /// param vertex_attribute_descriptions: The vertex attribute descriptions.
+  /// param vertex_binding_descriptions: The vertex binding descriptions.
+  /// param dynamic_states: The dynamic states.
+  /// param desc: The graphics program description.
+  /// param pipeline_cache: The pipeline cache.
+  /// param debug_name: The debug name.
+  /// return: The result of the graphics program.
+  pub fn with_swapchain<DSL, VIAD, VIBD>(
     logical_device: Rc<RefCell<HalaLogicalDevice>>,
     swapchain: &HalaSwapchain,
     descriptor_set_layouts: &[DSL],
