@@ -245,6 +245,9 @@ pub trait HalaRendererTrait {
   /// param height: The height of the swapchain.
   /// return: The result.
   fn check_and_restore_device(&mut self, width: u32, height: u32) -> Result<(), HalaRendererError> {
+    self.check_and_restore_swapchain(width, height)
+  }
+  fn check_and_restore_swapchain(&mut self, width: u32, height: u32) -> Result<(), HalaRendererError> {
     if self.data().is_device_lost {
       self.resources().context.borrow_mut().reset_swapchain(width, height)?;
 
