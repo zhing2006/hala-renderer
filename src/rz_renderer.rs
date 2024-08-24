@@ -1081,7 +1081,7 @@ impl HalaRenderer {
         ],
       );
 
-      command_buffers.begin_rendering_with_multisample(
+      command_buffers.begin_rendering_with_swapchain_multisample(
         index,
         &context.swapchain,
         (0, 0, context.gpu_req.width, context.gpu_req.height),
@@ -1093,7 +1093,7 @@ impl HalaRenderer {
         Some(depth_stencil_multisample_image),
       );
     } else {
-      command_buffers.begin_rendering(
+      command_buffers.begin_rendering_with_swapchain(
         index,
         &context.swapchain,
         (0, 0, context.gpu_req.width, context.gpu_req.height),
@@ -1314,7 +1314,7 @@ impl HalaRenderer {
       );
 
       // Rendering.
-      command_buffers.begin_rendering(
+      command_buffers.begin_rendering_with_swapchain(
         index,
         &context.swapchain,
         (0, 0, self.info.width, self.info.height),
@@ -1372,7 +1372,7 @@ impl HalaRenderer {
     if self.use_deferred_subpasses {
       command_buffers.end_render_pass(index);
 
-      command_buffers.begin_rendering(
+      command_buffers.begin_rendering_with_swapchain(
         index,
         &context.swapchain,
         (0, 0, self.info.width, self.info.height),
