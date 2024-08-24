@@ -1220,7 +1220,7 @@ impl HalaRenderer {
         ],
       );
 
-      command_buffers.begin_rendering_with_rt(
+      command_buffers.begin_rendering_with(
         index,
         &[albedo_image, normal_image],
         Some(depth_image),
@@ -1228,6 +1228,9 @@ impl HalaRenderer {
         &[Some([0.0, 0.0, 0.0, 1.0]), Some([0.0, 0.0, 0.0, 1.0])],
         Some(0.0),
         None,
+        hala_gfx::HalaAttachmentStoreOp::STORE,
+        hala_gfx::HalaAttachmentStoreOp::STORE,
+        hala_gfx::HalaAttachmentStoreOp::DONT_CARE,
       );
     }
 
