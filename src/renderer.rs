@@ -99,7 +99,7 @@ impl HalaRendererResources {
     let transfer_staging_buffer = hala_gfx::HalaBuffer::new(
       Rc::clone(&context.logical_device),
       256 * 1024 * 1024, // 4096 * 4096 * RGBA32F = 256MB
-      hala_gfx::HalaBufferUsageFlags::TRANSFER_SRC,
+      hala_gfx::HalaBufferUsageFlags::TRANSFER_SRC | hala_gfx::HalaBufferUsageFlags::TRANSFER_DST,
       hala_gfx::HalaMemoryLocation::CpuToGpu,
       "transfer_staging.buffer",
     )?;
