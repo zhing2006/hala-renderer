@@ -337,6 +337,7 @@ impl HalaSceneGPUUploader {
       let data_index = scene_in_cpu.image2data_mapping.get(image_index).ok_or(HalaRendererError::new(&format!("The image {} is not found.", image_index), None))?;
       textures.push(*data_index);
 
+      let max_mip_levels = 4096u32.trailing_zeros() + 1;
       samplers.push(
         HalaSampler::new(
           Rc::clone(&context.logical_device),
@@ -346,7 +347,7 @@ impl HalaSceneGPUUploader {
           0.0,
           false,
           0.0,
-          (0.0, 0.0),
+          (0.0, max_mip_levels as f32),
           &format!("texture_{}.sampler", index)
         )?
       );
@@ -362,13 +363,16 @@ impl HalaSceneGPUUploader {
         HalaMemoryLocation::CpuToGpu,
         "image_staging.buffer")?;
       for (index, texture) in scene_in_cpu.image_data.iter().enumerate() {
+        let max_mip_levels = texture.width.max(texture.height).next_power_of_two().trailing_zeros() + 1;
+        log::debug!("Texture {} has {} mip levels.", index, max_mip_levels);
+
         let image = HalaImage::new_2d(
           Rc::clone(&context.logical_device),
-          HalaImageUsageFlags::SAMPLED | HalaImageUsageFlags::TRANSFER_DST,
+          HalaImageUsageFlags::SAMPLED | HalaImageUsageFlags::TRANSFER_SRC | HalaImageUsageFlags::TRANSFER_DST,
           texture.format,
           texture.width,
           texture.height,
-          1,
+          max_mip_levels,
           1,
           HalaMemoryLocation::GpuOnly,
           &format!("texture_{}.image", index)
@@ -377,26 +381,23 @@ impl HalaSceneGPUUploader {
           cpu::image_data::HalaImageDataType::ByteData(ref data) => {
             image.update_gpu_memory_with_buffer(
               data.as_slice(),
-              (if use_for_mesh_shader { hala_gfx::HalaPipelineStageFlags2::TASK_SHADER_EXT | hala_gfx::HalaPipelineStageFlags2::MESH_SHADER_EXT } else { hala_gfx::HalaPipelineStageFlags2::default() })
-                | (if use_for_ray_tracing { hala_gfx::HalaPipelineStageFlags2::RAY_TRACING_SHADER } else { hala_gfx::HalaPipelineStageFlags2::default() })
-                | hala_gfx::HalaPipelineStageFlags2::VERTEX_SHADER | hala_gfx::HalaPipelineStageFlags2::FRAGMENT_SHADER
-                | hala_gfx::HalaPipelineStageFlags2::COMPUTE_SHADER
-                | hala_gfx::HalaPipelineStageFlags2::TRANSFER,
+                hala_gfx::HalaPipelineStageFlags2::TRANSFER,
+                hala_gfx::HalaAccessFlags2::TRANSFER_WRITE,
+                hala_gfx::HalaImageLayout::TRANSFER_DST_OPTIMAL,
               &image_staging,
               graphics_command_buffers)?;
           },
           cpu::image_data::HalaImageDataType::FloatData(ref data) => {
             image.update_gpu_memory_with_buffer(
               data.as_slice(),
-              (if use_for_mesh_shader { hala_gfx::HalaPipelineStageFlags2::TASK_SHADER_EXT | hala_gfx::HalaPipelineStageFlags2::MESH_SHADER_EXT } else { hala_gfx::HalaPipelineStageFlags2::default() })
-                | (if use_for_ray_tracing { hala_gfx::HalaPipelineStageFlags2::RAY_TRACING_SHADER } else { hala_gfx::HalaPipelineStageFlags2::default() })
-                | hala_gfx::HalaPipelineStageFlags2::VERTEX_SHADER | hala_gfx::HalaPipelineStageFlags2::FRAGMENT_SHADER
-                | hala_gfx::HalaPipelineStageFlags2::COMPUTE_SHADER
-                | hala_gfx::HalaPipelineStageFlags2::TRANSFER,
+                hala_gfx::HalaPipelineStageFlags2::TRANSFER,
+                hala_gfx::HalaAccessFlags2::TRANSFER_WRITE,
+                hala_gfx::HalaImageLayout::TRANSFER_DST_OPTIMAL,
               &image_staging,
               graphics_command_buffers)?;
           }
         };
+        image.gen_mipmaps(graphics_command_buffers)?;
         images.push(image);
       }
     }

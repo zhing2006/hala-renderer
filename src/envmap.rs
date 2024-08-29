@@ -156,6 +156,8 @@ impl EnvMap {
     image.update_gpu_memory_with_buffer(
       data.as_slice(),
       hala_gfx::HalaPipelineStageFlags2::RAY_TRACING_SHADER,
+      hala_gfx::HalaAccessFlags2::SHADER_READ,
+      hala_gfx::HalaImageLayout::SHADER_READ_ONLY_OPTIMAL,
       transfer_staging_buffer,
       transfer_command_buffers)?;
     let marginal_distribution_image = HalaImage::new_2d(
@@ -172,6 +174,8 @@ impl EnvMap {
     marginal_distribution_image.update_gpu_memory_with_buffer(
       marginal_distribution.as_slice(),
       hala_gfx::HalaPipelineStageFlags2::RAY_TRACING_SHADER,
+      hala_gfx::HalaAccessFlags2::SHADER_READ,
+      hala_gfx::HalaImageLayout::SHADER_READ_ONLY_OPTIMAL,
       transfer_staging_buffer,
       transfer_command_buffers)?;
     let conditional_distribution_image = HalaImage::new_2d(
@@ -188,6 +192,8 @@ impl EnvMap {
     conditional_distribution_image.update_gpu_memory_with_buffer(
       conditional_distribution.as_slice(),
       hala_gfx::HalaPipelineStageFlags2::RAY_TRACING_SHADER,
+      hala_gfx::HalaAccessFlags2::SHADER_READ,
+      hala_gfx::HalaImageLayout::SHADER_READ_ONLY_OPTIMAL,
       transfer_staging_buffer,
       transfer_command_buffers)?;
 

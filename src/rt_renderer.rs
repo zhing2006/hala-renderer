@@ -1160,6 +1160,8 @@ impl HalaRenderer {
     image.update_gpu_memory_with_buffer(
       data.as_slice(),
       hala_gfx::HalaPipelineStageFlags2::RAY_TRACING_SHADER,
+      hala_gfx::HalaAccessFlags2::SHADER_READ,
+      hala_gfx::HalaImageLayout::SHADER_READ_ONLY_OPTIMAL,
       &self.resources.transfer_staging_buffer,
       &self.resources.transfer_command_buffers)?;
     self.blue_noise_image = Some(image);
