@@ -637,7 +637,7 @@ impl HalaRendererTrait for HalaRenderer {
       let lighting_graphics_pipeline = if self.use_deferred_subpasses {
         hala_gfx::HalaGraphicsPipeline::with_renderpass_format_and_size(
           Rc::clone(&context.logical_device),
-          &[context.swapchain.desc.format],
+          &[context.swapchain.format],
           Some(context.swapchain.depth_stencil_format),
           self.info.width,
           self.info.height,
@@ -1627,7 +1627,7 @@ impl HalaRenderer {
       self.color_multisample_image = Some(hala_gfx::HalaImage::with_2d_multisample(
         Rc::clone(&context.logical_device),
         hala_gfx::HalaImageUsageFlags::COLOR_ATTACHMENT | hala_gfx::HalaImageUsageFlags::TRANSIENT_ATTACHMENT,
-        context.swapchain.desc.format,
+        context.swapchain.format,
         self.info.width,
         self.info.height,
         1,
@@ -1772,7 +1772,7 @@ impl HalaRenderer {
       Rc::clone(&context.logical_device),
       &[
         HalaRenderPassAttachmentDesc::default()
-          .format(context.swapchain.desc.format)
+          .format(context.swapchain.format)
           .load_op(hala_gfx::HalaAttachmentLoadOp::DONT_CARE)
           .store_op(hala_gfx::HalaAttachmentStoreOp::STORE)
           .initial_layout(hala_gfx::HalaImageLayout::UNDEFINED)
@@ -1842,7 +1842,7 @@ impl HalaRenderer {
       Rc::clone(&context.logical_device),
       self.deferred_render_pass.as_ref().ok_or(HalaRendererError::new("The deferred render pass is none!", None))?,
       attachments_list.iter().map(|attachments| attachments.as_ref()).collect::<Vec<_>>().as_slice(),
-      context.swapchain.desc.dims,
+      context.swapchain.dims,
       "deferred",
     )?;
 

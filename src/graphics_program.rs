@@ -225,10 +225,10 @@ impl HalaGraphicsProgram {
   {
     Self::with_formats_and_size(
       logical_device,
-      &[swapchain.desc.format],
+      &[swapchain.format],
       Some(swapchain.depth_stencil_format),
-      swapchain.desc.dims.width,
-      swapchain.desc.dims.height,
+      swapchain.dims.width,
+      swapchain.dims.height,
       descriptor_set_layouts,
       flags,
       vertex_attribute_descriptions,
