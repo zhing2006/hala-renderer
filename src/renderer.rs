@@ -74,7 +74,7 @@ impl HalaRendererResources {
     // Craete command buffers.
     let graphics_command_buffers = hala_gfx::HalaCommandBufferSet::new(
       Rc::clone(&context.logical_device),
-      Rc::clone(&context.pools),
+      Rc::clone(&context.command_pools),
       hala_gfx::HalaCommandBufferType::GRAPHICS,
       hala_gfx::HalaCommandBufferLevel::PRIMARY,
       context.swapchain.num_of_images,
@@ -82,7 +82,7 @@ impl HalaRendererResources {
     )?;
     let compute_command_buffers = hala_gfx::HalaCommandBufferSet::new(
       Rc::clone(&context.logical_device),
-      Rc::clone(&context.pools),
+      Rc::clone(&context.command_pools),
       hala_gfx::HalaCommandBufferType::COMPUTE,
       hala_gfx::HalaCommandBufferLevel::PRIMARY,
       context.swapchain.num_of_images,
@@ -90,7 +90,7 @@ impl HalaRendererResources {
     )?;
     let transfer_command_buffers = hala_gfx::HalaCommandBufferSet::new(
       Rc::clone(&context.logical_device),
-      Rc::clone(&context.pools),
+      Rc::clone(&context.command_pools),
       hala_gfx::HalaCommandBufferType::TRANSFER,
       hala_gfx::HalaCommandBufferLevel::PRIMARY,
       context.swapchain.num_of_images,

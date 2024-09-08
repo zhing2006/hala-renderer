@@ -889,7 +889,7 @@ impl HalaRenderer {
     {
       let command_buffers = hala_gfx::HalaCommandBufferSet::new(
         Rc::clone(&context.logical_device),
-        Rc::clone(&context.short_time_pools),
+        Rc::clone(&context.short_time_command_pools),
         hala_gfx::HalaCommandBufferType::GRAPHICS,
         hala_gfx::HalaCommandBufferLevel::PRIMARY,
         1,
