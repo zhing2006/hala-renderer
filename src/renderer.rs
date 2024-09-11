@@ -34,30 +34,14 @@ impl HalaRendererInfo {
 
 /// The renderer resources.
 pub struct HalaRendererResources {
-  pub context: std::mem::ManuallyDrop<Rc<RefCell<HalaContext>>>,
+  pub graphics_command_buffers: hala_gfx::HalaCommandBufferSet,
+  pub compute_command_buffers: hala_gfx::HalaCommandBufferSet,
+  pub transfer_command_buffers: hala_gfx::HalaCommandBufferSet,
+  pub transfer_staging_buffer: hala_gfx::HalaBuffer,
 
-  pub graphics_command_buffers: std::mem::ManuallyDrop<hala_gfx::HalaCommandBufferSet>,
-  pub compute_command_buffers: std::mem::ManuallyDrop<hala_gfx::HalaCommandBufferSet>,
-  pub transfer_command_buffers: std::mem::ManuallyDrop<hala_gfx::HalaCommandBufferSet>,
-  pub transfer_staging_buffer: std::mem::ManuallyDrop<hala_gfx::HalaBuffer>,
+  pub descriptor_pool: Rc<RefCell<hala_gfx::HalaDescriptorPool>>,
 
-  pub descriptor_pool: std::mem::ManuallyDrop<Rc<RefCell<hala_gfx::HalaDescriptorPool>>>,
-}
-
-/// The renderer resources drop implementation.
-impl Drop for HalaRendererResources {
-
-  fn drop(&mut self) {
-    unsafe {
-      std::mem::ManuallyDrop::drop(&mut self.graphics_command_buffers);
-      std::mem::ManuallyDrop::drop(&mut self.compute_command_buffers);
-      std::mem::ManuallyDrop::drop(&mut self.transfer_command_buffers);
-      std::mem::ManuallyDrop::drop(&mut self.transfer_staging_buffer);
-      std::mem::ManuallyDrop::drop(&mut self.descriptor_pool);
-      std::mem::ManuallyDrop::drop(&mut self.context);
-    }
-  }
-
+  pub context: Rc<RefCell<HalaContext>>,
 }
 
 /// The renderer resources implementation.
@@ -114,14 +98,14 @@ impl HalaRendererResources {
 
     Ok(
       Self {
-        context: std::mem::ManuallyDrop::new(Rc::new(RefCell::new(context))),
+        context: Rc::new(RefCell::new(context)),
 
-        graphics_command_buffers: std::mem::ManuallyDrop::new(graphics_command_buffers),
-        compute_command_buffers: std::mem::ManuallyDrop::new(compute_command_buffers),
-        transfer_command_buffers: std::mem::ManuallyDrop::new(transfer_command_buffers),
-        transfer_staging_buffer: std::mem::ManuallyDrop::new(transfer_staging_buffer),
+        graphics_command_buffers,
+        compute_command_buffers,
+        transfer_command_buffers,
+        transfer_staging_buffer,
 
-        descriptor_pool: std::mem::ManuallyDrop::new(descriptor_pool),
+        descriptor_pool,
       }
     )
   }
@@ -315,6 +299,17 @@ pub trait HalaRendererTrait {
       Ok(_) => (),
       Err(err) => {
         if err.is_device_lost() {
+          {
+            let context = self.resources().context.borrow_mut();
+            let logical_device = context.logical_device.borrow();
+            match logical_device.wait_idle() {
+              Ok(_) => (),
+              Err(err) => {
+                log::error!("Failed to wait the device idle: {}", err);
+              }
+            }
+          }
+          self.resources().graphics_command_buffers.reset(self.data().image_index, true)?;
           log::warn!("The device is lost!");
           self.data_mut().is_device_lost = true;
         } else {

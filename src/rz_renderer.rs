@@ -59,8 +59,6 @@ pub struct HalaRenderer {
 
   pub(crate) use_mesh_shader: bool,
 
-  pub(crate) resources: std::mem::ManuallyDrop<HalaRendererResources>,
-
   pub(crate) color_multisample_image: Option<hala_gfx::HalaImage>,
   pub(crate) depth_stencil_multisample_image: Option<hala_gfx::HalaImage>,
 
@@ -78,8 +76,8 @@ pub struct HalaRenderer {
   pub(crate) lighting_fragment_shader: Option<hala_gfx::HalaShader>,
   pub(crate) lighting_graphics_pipeline: Option<hala_gfx::HalaGraphicsPipeline>,
 
-  pub(crate) static_descriptor_set: std::mem::ManuallyDrop<hala_gfx::HalaDescriptorSet>,
-  pub(crate) global_uniform_buffer: std::mem::ManuallyDrop<hala_gfx::HalaBuffer>,
+  pub(crate) static_descriptor_set: hala_gfx::HalaDescriptorSet,
+  pub(crate) global_uniform_buffer: hala_gfx::HalaBuffer,
   pub(crate) dynamic_descriptor_set: Option<hala_gfx::HalaDescriptorSet>,
   pub(crate) object_uniform_buffers: Vec<Vec<hala_gfx::HalaBuffer>>,
 
@@ -94,11 +92,12 @@ pub struct HalaRenderer {
 
   pub(crate) forward_graphics_pipelines: Vec<hala_gfx::HalaGraphicsPipeline>,
   pub(crate) deferred_graphics_pipelines: Vec<hala_gfx::HalaGraphicsPipeline>,
-  pub(crate) compute_pipelines: Vec<hala_gfx::HalaComputePipeline>,
   pub(crate) textures_descriptor_set: Option<hala_gfx::HalaDescriptorSet>,
 
   pub(crate) data: HalaRendererData,
   pub(crate) statistics: HalaRendererStatistics,
+
+  pub(crate) resources: HalaRendererResources,
 
 }
 
@@ -106,39 +105,6 @@ pub struct HalaRenderer {
 impl Drop for HalaRenderer {
 
   fn drop(&mut self) {
-    self.textures_descriptor_set = None;
-    self.forward_graphics_pipelines.clear();
-    self.deferred_graphics_pipelines.clear();
-    self.compute_pipelines.clear();
-
-    self.scene_in_gpu = None;
-
-    self.traditional_shaders.clear();
-    self.shaders.clear();
-    self.compute_shaders.clear();
-
-    self.depth_image = None;
-    self.albedo_image = None;
-    self.normal_image = None;
-    self.lighting_descriptor_set = None;
-    self.lighting_vertex_shader = None;
-    self.lighting_fragment_shader = None;
-    self.lighting_graphics_pipeline = None;
-    self.deferred_render_pass = None;
-    self.deferred_framebuffers = None;
-
-    self.object_uniform_buffers.clear();
-    self.dynamic_descriptor_set = None;
-
-    self.color_multisample_image = None;
-    self.depth_stencil_multisample_image = None;
-
-    unsafe {
-      std::mem::ManuallyDrop::drop(&mut self.global_uniform_buffer);
-      std::mem::ManuallyDrop::drop(&mut self.static_descriptor_set);
-      std::mem::ManuallyDrop::drop(&mut self.resources);
-    }
-
     log::debug!("A HalaRenderer \"{}\" is dropped.", self.info().name);
   }
 
@@ -843,7 +809,7 @@ impl HalaRenderer {
       info: HalaRendererInfo::new(name, width, height),
       use_mesh_shader: gpu_req.require_mesh_shader,
 
-      resources: std::mem::ManuallyDrop::new(resources),
+      resources,
 
       color_multisample_image: None,
       depth_stencil_multisample_image: None,
@@ -862,9 +828,9 @@ impl HalaRenderer {
       lighting_fragment_shader: None,
       lighting_graphics_pipeline: None,
 
-      static_descriptor_set: std::mem::ManuallyDrop::new(static_descriptor_set),
+      static_descriptor_set,
       dynamic_descriptor_set: None,
-      global_uniform_buffer: std::mem::ManuallyDrop::new(global_uniform_buffer),
+      global_uniform_buffer,
       object_uniform_buffers: Vec::new(),
 
       traditional_shaders: Vec::new(),
@@ -875,7 +841,6 @@ impl HalaRenderer {
 
       forward_graphics_pipelines: Vec::new(),
       deferred_graphics_pipelines: Vec::new(),
-      compute_pipelines: Vec::new(),
 
       textures_descriptor_set: None,
 

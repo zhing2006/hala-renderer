@@ -577,11 +577,9 @@ pub struct HalaRenderer {
   pub(crate) use_simple_aces: bool,
   pub(crate) max_frames: u64,
 
-  pub(crate) resources: std::mem::ManuallyDrop<HalaRendererResources>,
-
-  pub(crate) static_descriptor_set: std::mem::ManuallyDrop<hala_gfx::HalaDescriptorSet>,
+  pub(crate) static_descriptor_set: hala_gfx::HalaDescriptorSet,
   pub(crate) dynamic_descriptor_set: Option<hala_gfx::HalaDescriptorSet>,
-  pub(crate) global_uniform_buffer: std::mem::ManuallyDrop<hala_gfx::HalaBuffer>,
+  pub(crate) global_uniform_buffer: hala_gfx::HalaBuffer,
   pub(crate) final_image: std::mem::ManuallyDrop<hala_gfx::HalaImage>,
   pub(crate) final_image_binding_index: u32,
   pub(crate) accum_image: std::mem::ManuallyDrop<hala_gfx::HalaImage>,
@@ -614,6 +612,8 @@ pub struct HalaRenderer {
   pub(crate) data: HalaRendererData,
   pub(crate) statistics: HalaRendererStatistics,
 
+  pub(crate) resources: HalaRendererResources,
+
 }
 
 /// The Drop implementation of the renderer.
@@ -622,24 +622,10 @@ impl Drop for HalaRenderer {
   fn drop(&mut self) {
     unsafe {
       std::mem::ManuallyDrop::drop(&mut self.host_accessible_buffer);
-      self.textures_descriptor_set = None;
-      self.envmap = None;
-      self.scene_in_gpu = None;
-      self.blue_noise_image = None;
-      self.sbt = None;
-      self.pipeline = None;
-      self.raygen_shaders.clear();
-      self.miss_shaders.clear();
-      self.hit_shaders.clear();
-      self.callable_shaders.clear();
-      self.dynamic_descriptor_set = None;
       std::mem::ManuallyDrop::drop(&mut self.normal_image);
       std::mem::ManuallyDrop::drop(&mut self.albedo_image);
       std::mem::ManuallyDrop::drop(&mut self.accum_image);
       std::mem::ManuallyDrop::drop(&mut self.final_image);
-      std::mem::ManuallyDrop::drop(&mut self.global_uniform_buffer);
-      std::mem::ManuallyDrop::drop(&mut self.static_descriptor_set);
-      std::mem::ManuallyDrop::drop(&mut self.resources);
     }
     log::debug!("A HalaRenderer \"{}\" is dropped.", self.info().name);
   }
@@ -787,11 +773,11 @@ impl HalaRenderer {
       use_simple_aces,
       max_frames: if max_frames == 0 { u64::MAX } else { max_frames },
 
-      resources: std::mem::ManuallyDrop::new(resources),
+      resources,
 
-      static_descriptor_set: std::mem::ManuallyDrop::new(static_descriptor_set),
+      static_descriptor_set,
       dynamic_descriptor_set: None,
-      global_uniform_buffer: std::mem::ManuallyDrop::new(uniform_buffer),
+      global_uniform_buffer: uniform_buffer,
       final_image: std::mem::ManuallyDrop::new(final_image),
       final_image_binding_index: 0,
       accum_image: std::mem::ManuallyDrop::new(accum_image),
